@@ -5,8 +5,10 @@ from functools import cached_property
 
 from .config import Settings, get_settings
 from .ingest.indexer import Indexer
+from .rerank.cross_encoder import CrossEncoderReranker, Reranker
 from .retrieve.bm25 import BM25Index
 from .retrieve.embeddings import Embedder, SentenceTransformerEmbedder
+from .retrieve.hybrid import HybridRetriever
 from .retrieve.vector import QdrantIndex, make_client
 from .store.db import Database
 
@@ -48,3 +50,11 @@ class Services:
             chunk_size=self.settings.chunk_size,
             chunk_overlap=self.settings.chunk_overlap,
         )
+
+    @cached_property
+    def retriever(self) -> HybridRetriever:
+        return HybridRetriever(self.db, self.bm25, self.vectors, self.embedder)
+
+    @cached_property
+    def reranker(self) -> Reranker:
+        return CrossEncoderReranker(self.settings.rerank_model)
