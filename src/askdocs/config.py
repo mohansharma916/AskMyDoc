@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     chunk_size: int = 512
     chunk_overlap: int = 64
 
+    # Prompts
+    prompts_dir: Path = PROJECT_ROOT / "prompts"
+    prompt_version: str = "answer_v1"
+
     # Retrieval depth
     retrieve_k: int = 20
     rerank_k: int = 5
