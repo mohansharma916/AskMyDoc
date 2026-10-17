@@ -44,7 +44,7 @@ class Settings(BaseSettings):
     # Retrieval depth
     retrieve_k: int = 20
     rerank_k: int = 5
-    abstain_threshold: float = 0.1  # min best rerank score; tune with python -m eval.tune_threshold
+    abstain_threshold: float = 0.03  # min best rerank score; tuned with python -m eval.tune_threshold
 
 
 @lru_cache
