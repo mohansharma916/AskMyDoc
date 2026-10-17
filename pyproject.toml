@@ -39,6 +39,7 @@ src = ["src", "tests", "eval"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "SIM"]
+ignore = ["SIM905"]  # allow "a b c".split() word lists
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
