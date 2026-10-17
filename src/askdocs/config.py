@@ -13,6 +13,11 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:5173"
     max_upload_mb: int = 25
     ingest_root: Path = PROJECT_ROOT / "data"  # POST /ingest {path} may only read below this folder
+    warmup_models: bool = True  # load embedding + reranker models at startup
+
+    # Tracing (OTLP/HTTP: Phoenix at :6006 by default; Langfuse via its OTLP endpoint + OTEL_EXPORTER_OTLP_HEADERS)
+    tracing_enabled: bool = False
+    otel_endpoint: str = "http://localhost:6006/v1/traces"
 
     # Storage
     database_url: str = f"sqlite:///{PROJECT_ROOT / 'data' / 'askdocs.db'}"
@@ -44,7 +49,7 @@ class Settings(BaseSettings):
     # Retrieval depth
     retrieve_k: int = 20
     rerank_k: int = 5
-    abstain_threshold: float = 0.1  # min best rerank score; tune with python -m eval.tune_threshold
+    abstain_threshold: float = 0.03  # min best rerank score; tuned with python -m eval.tune_threshold
 
 
 @lru_cache

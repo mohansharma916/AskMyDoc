@@ -20,6 +20,7 @@ from .retrieve.hybrid import HybridRetriever, RetrievalMode, StageTimeout
 from .retrieve.types import Candidate
 from .store.db import Database
 from .store.models import Trace
+from .tracing import Span, span, trace_id_hex
 
 NOT_FOUND_MESSAGE = "I couldn't find the answer to that in the documents."
 SNIPPET_CHARS = 300
@@ -56,10 +57,13 @@ class AskResult:
     model: str | None
     prompt_version: str
     contexts: list[Candidate] = field(default_factory=list, repr=False)  # chunks shown to the LLM
+    ranked_chunk_ids: list[str] = field(default_factory=list, repr=False)  # full ranking, for eval metrics
+    trace_id: str | None = None  # OpenTelemetry trace id, when tracing is enabled
 
     def to_dict(self) -> dict:
         data = asdict(self)
         data.pop("contexts")
+        data.pop("ranked_chunk_ids")
         return data
 
 
@@ -124,20 +128,30 @@ class AskPipeline:
     # --- stages ---------------------------------------------------------------
 
     def retrieve(
-        self, question: str, top_k: int, doc_ids: list[str] | None, options: PipelineOptions, latency: dict
+        self,
+        question: str,
+        doc_ids: list[str] | None,
+        options: PipelineOptions,
+        latency: dict,
+        parent: Span | None = None,
     ) -> list[Candidate]:
+        """All retrieved candidates, best first (reranked when enabled); callers keep the top k."""
         start = time.perf_counter()
-        candidates = self.retriever.retrieve(question, self.retrieve_k, doc_ids, options.mode)
+        with span("retrieve", parent, mode=options.mode, k=self.retrieve_k) as s:
+            candidates = self.retriever.retrieve(question, self.retrieve_k, doc_ids, options.mode)
+            s.set_attribute("candidates", len(candidates))
         latency["retrieve"] = _ms(start)
         if options.rerank and candidates:
             start = time.perf_counter()
-            future = self._pool.submit(self.reranker.rerank, question, candidates)
-            try:
-                candidates = future.result(timeout=self.rerank_timeout_s)
-            except FutureTimeout as exc:
-                raise StageTimeout("rerank", self.rerank_timeout_s) from exc
+            with span("rerank", parent, candidates=len(candidates)) as s:
+                future = self._pool.submit(self.reranker.rerank, question, candidates)
+                try:
+                    candidates = future.result(timeout=self.rerank_timeout_s)
+                except FutureTimeout as exc:
+                    raise StageTimeout("rerank", self.rerank_timeout_s) from exc
+                s.set_attribute("top_score", candidates[0].scores["rerank"])
             latency["rerank"] = _ms(start)
-        return candidates[:top_k]
+        return candidates
 
     def abstain_reason(self, chunks: list[Candidate], options: PipelineOptions) -> str | None:
         if not chunks:
@@ -159,6 +173,8 @@ class AskPipeline:
         latency: dict,
         started: float,
         abstain_reason: str | None,
+        ranked: list[Candidate],
+        root: Span,
     ) -> AskResult:
         latency["total"] = _ms(started)
         abstained = abstain_reason is not None
@@ -174,7 +190,14 @@ class AskPipeline:
             model=self.llm.model if usage.input_tokens else None,
             prompt_version=self.prompt.version,
             contexts=chunks,
+            ranked_chunk_ids=[c.chunk_id for c in ranked],
+            trace_id=trace_id_hex(root),
         )
+        root.set_attribute("abstained", abstained)
+        root.set_attribute("input_tokens", usage.input_tokens)
+        root.set_attribute("output_tokens", usage.output_tokens)
+        if abstain_reason:
+            root.set_attribute("abstain_reason", abstain_reason)
         self._record(result)
         return result
 
@@ -195,6 +218,7 @@ class AskPipeline:
                     latency_ms=result.latency_ms,
                     model=result.model,
                     prompt_version=result.prompt_version,
+                    otel_trace_id=result.trace_id,
                 )
             )
 
@@ -217,18 +241,26 @@ class AskPipeline:
         options: PipelineOptions | None = None,
     ) -> AskResult:
         options = options or PipelineOptions()
-        started, latency, usage = time.perf_counter(), {}, Usage()
         query_id = new_query_id()
-        chunks = self.retrieve(question, top_k or self.rerank_k, doc_ids, options, latency)
+        with span("ask", query_id=query_id, mode=options.mode, rerank=options.rerank) as root:
+            return self._ask(question, top_k, doc_ids, options, query_id, root)
+
+    def _ask(self, question, top_k, doc_ids, options: PipelineOptions, query_id: str, root: Span) -> AskResult:
+        started, latency, usage = time.perf_counter(), {}, Usage()
+        ranked = self.retrieve(question, doc_ids, options, latency, root)
+        chunks = ranked[: top_k or self.rerank_k]
         if reason := self.abstain_reason(chunks, options):
-            return self._finish(query_id, question, "", chunks, usage, latency, started, reason)
+            return self._finish(query_id, question, "", chunks, usage, latency, started, reason, ranked, root)
 
         start = time.perf_counter()
         messages = self._messages(question, chunks)
         for attempt in range(2):
-            completion = self.llm.complete(self.prompt.system, messages)
+            with span("generate", root, attempt=attempt + 1, model=self.llm.model) as gen:
+                completion = self.llm.complete(self.prompt.system, messages)
+                reason, issues = self._judge(completion.text, len(chunks), options)
+                gen.set_attribute("output_tokens", completion.usage.output_tokens)
+                gen.set_attribute("citations_ok", not issues)
             usage += completion.usage
-            reason, issues = self._judge(completion.text, len(chunks), options)
             if reason or not issues:
                 break
             if attempt == 0:  # one retry with the violations spelled out
@@ -239,7 +271,7 @@ class AskPipeline:
             else:
                 reason = "citation_check_failed"
         latency["generate"] = _ms(start)
-        return self._finish(query_id, question, completion.text, chunks, usage, latency, started, reason)
+        return self._finish(query_id, question, completion.text, chunks, usage, latency, started, reason, ranked, root)
 
     def ask_stream(
         self,
@@ -249,13 +281,18 @@ class AskPipeline:
         options: PipelineOptions | None = None,
     ) -> Iterator[Event]:
         options = options or PipelineOptions()
-        started, latency, usage = time.perf_counter(), {}, Usage()
         query_id = new_query_id()
-        yield Event("meta", {"query_id": query_id})
+        with span("ask_stream", query_id=query_id, mode=options.mode, rerank=options.rerank) as root:
+            yield from self._ask_stream(question, top_k, doc_ids, options, query_id, root)
 
-        chunks = self.retrieve(question, top_k or self.rerank_k, doc_ids, options, latency)
+    def _ask_stream(self, question, top_k, doc_ids, options, query_id: str, root: Span) -> Iterator[Event]:
+        started, latency, usage = time.perf_counter(), {}, Usage()
+        yield Event("meta", {"query_id": query_id, "trace_id": trace_id_hex(root)})
+
+        ranked = self.retrieve(question, doc_ids, options, latency, root)
+        chunks = ranked[: top_k or self.rerank_k]
         if reason := self.abstain_reason(chunks, options):
-            result = self._finish(query_id, question, "", chunks, usage, latency, started, reason)
+            result = self._finish(query_id, question, "", chunks, usage, latency, started, reason, ranked, root)
             yield Event("done", result.to_dict())
             return
 
@@ -264,17 +301,19 @@ class AskPipeline:
         for attempt in range(2):
             completion: Completion | None = None
             held = ""  # hold back text while it could still be the NOT_FOUND reply
-            for item in self.llm.stream(self.prompt.system, messages):
-                if isinstance(item, Completion):
-                    completion = item
-                    continue
-                if held is not None:
-                    held += item
-                    if NOT_FOUND.startswith(held.strip().strip("*`")[: len(NOT_FOUND)]):
+            with span("generate", root, attempt=attempt + 1, model=self.llm.model, streamed=True) as gen:
+                for item in self.llm.stream(self.prompt.system, messages):
+                    if isinstance(item, Completion):
+                        completion = item
                         continue
-                    item, held = held, None
-                yield Event("token", {"text": item})
-            assert completion is not None
+                    if held is not None:
+                        held += item
+                        if NOT_FOUND.startswith(held.strip().strip("*`")[: len(NOT_FOUND)]):
+                            continue
+                        item, held = held, None
+                    yield Event("token", {"text": item})
+                assert completion is not None
+                gen.set_attribute("output_tokens", completion.usage.output_tokens)
             if held and not is_not_found(held):  # short answer that only looked like NOT_FOUND
                 yield Event("token", {"text": held})
             usage += completion.usage
@@ -290,5 +329,7 @@ class AskPipeline:
             else:
                 reason = "citation_check_failed"
         latency["generate"] = _ms(start)
-        result = self._finish(query_id, question, completion.text, chunks, usage, latency, started, reason)
+        result = self._finish(
+            query_id, question, completion.text, chunks, usage, latency, started, reason, ranked, root
+        )
         yield Event("done", result.to_dict())

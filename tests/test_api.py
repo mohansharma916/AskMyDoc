@@ -6,7 +6,7 @@ from askdocs.api.main import create_app
 
 @pytest.fixture
 def client(make_services, tmp_path):
-    services = make_services(ingest_root=tmp_path, max_upload_mb=1)
+    services = make_services(ingest_root=tmp_path, max_upload_mb=1, warmup_models=False)
     app = create_app(services)
     with TestClient(app, raise_server_exceptions=False) as c:
         c.services = services
@@ -166,3 +166,37 @@ def test_ask_stream_error_event(client, monkeypatch):
     assert events[-1][0] == "error" and events[-1][1]["code"] == "timeout" and events[-1][1]["status"] == 504
     r = client.post("/api/v1/ask/stream", json={"question": ""})
     assert r.status_code == 400
+
+
+def test_feedback_is_stored_with_the_trace(client):
+    from askdocs.store.models import Feedback
+
+    answer = client.post("/api/v1/ask", json={"question": "parental leave weeks"}).json()
+    r = client.post("/api/v1/feedback", json={"query_id": answer["query_id"], "rating": "helpful"})
+    assert r.status_code == 201 and r.json()["rating"] == "helpful"
+    r = client.post(
+        "/api/v1/feedback", json={"query_id": answer["query_id"], "rating": "not_helpful", "comment": "too short"}
+    )
+    assert r.status_code == 201
+
+    with client.services.db.session() as s:
+        [row] = s.query(Feedback).all()
+    assert (row.rating, row.comment, row.question) == ("not_helpful", "too short", "parental leave weeks")
+    assert row.cited_chunk_ids == [c["chunk_id"] for c in answer["citations"]]
+
+
+def test_feedback_errors(client):
+    r = client.post("/api/v1/feedback", json={"query_id": "q_nope", "rating": "helpful"})
+    assert (r.status_code, r.json()["error"]["code"]) == (404, "not_found")
+    r = client.post("/api/v1/feedback", json={"query_id": "q_x", "rating": "meh"})
+    assert r.status_code == 400
+
+
+def test_warm_up_loads_models_and_survives_failures(make_services, caplog):
+    from askdocs.api.main import warm_up
+
+    services = make_services()
+    warm_up(services)  # fake embedder and reranker: just must not raise
+    services.__dict__["reranker"] = None  # broken reranker
+    warm_up(services)
+    assert "warm-up failed" in caplog.text

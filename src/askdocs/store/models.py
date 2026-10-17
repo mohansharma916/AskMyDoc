@@ -57,4 +57,19 @@ class Trace(Base):
     latency_ms: Mapped[dict] = mapped_column(JSON, default=dict)
     model: Mapped[str | None] = mapped_column(String(100), nullable=True)
     prompt_version: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    otel_trace_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class Feedback(Base):
+    """A user's rating of one answer, stored with what was asked and cited."""
+
+    __tablename__ = "feedback"
+
+    query_id: Mapped[str] = mapped_column(ForeignKey("traces.query_id", ondelete="CASCADE"), primary_key=True)
+    question: Mapped[str] = mapped_column(Text)
+    answer: Mapped[str] = mapped_column(Text)
+    cited_chunk_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
+    rating: Mapped[str] = mapped_column(String(20))  # helpful | not_helpful
+    comment: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

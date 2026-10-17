@@ -16,6 +16,7 @@ data/*
 # Eval outputs
 eval/report.json
 eval/report.md
+reports/
 
 # Frontend
 node_modules/
@@ -33,3 +34,4 @@ TESTING.md
 .env
 frontend/.env
 .DS_Store
+frontend/*.tsbuildinfo

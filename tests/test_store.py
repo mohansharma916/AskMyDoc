@@ -49,3 +49,20 @@ def test_in_memory_database_is_shared_across_threads():
         s.add(_doc())
     with ThreadPoolExecutor(1) as pool:
         assert pool.submit(lambda: db.session().__enter__().get(Document, "hr-handbook")).result() is not None
+
+
+def test_missing_nullable_columns_are_added_to_existing_tables(tmp_path):
+    import sqlite3
+
+    from askdocs.store.db import add_missing_columns
+
+    path = tmp_path / "old.db"
+    con = sqlite3.connect(path)
+    con.execute("CREATE TABLE traces (query_id VARCHAR(40) PRIMARY KEY, question TEXT, answer TEXT)")
+    con.commit()
+    con.close()
+
+    db = Database(f"sqlite:///{path}")  # runs the migration on open
+    columns = {row[1] for row in sqlite3.connect(path).execute("PRAGMA table_info(traces)")}
+    assert {"otel_trace_id", "model", "prompt_version"} <= columns
+    assert add_missing_columns(db.engine) == []  # idempotent

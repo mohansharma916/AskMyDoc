@@ -1,0 +1,12 @@
+# CI gate: every metric must meet its bound or `pytest eval/` fails.
+# Starting points from the build pack; set final values from the first
+# baseline run and only ratchet them up.
+
+recall_at_5: {min: 0.85}         # supporting chunk in top 5 after rerank
+mrr_at_10: {min: 0.70}
+faithfulness: {min: 0.85}        # claims supported by the cited chunks (Ragas, LLM-judged)
+answer_correctness: {min: 0.75}  # vs expected answer (Ragas factual correctness, F1)
+citation_precision: {min: 0.90}  # cited chunk actually supports its sentence (LLM-judged)
+correct_abstention: {min: 0.80}  # "not found" on unanswerable items
+false_abstention: {max: 0.10}    # "not found" on answerable items
+latency_p95_ms: {max: 4000}

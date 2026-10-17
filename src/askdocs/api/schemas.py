@@ -103,6 +103,22 @@ class AskResponse(BaseModel):
     latency_ms: dict[str, int]
     model: str | None
     prompt_version: str
+    trace_id: str | None = None
+
+
+# --- Feedback -----------------------------------------------------------------
+
+
+class FeedbackRequest(BaseModel):
+    query_id: str
+    rating: Literal["helpful", "not_helpful"]
+    comment: str | None = Field(None, max_length=2000)
+
+
+class FeedbackResponse(BaseModel):
+    query_id: str
+    rating: Literal["helpful", "not_helpful"]
+    created_at: datetime
 
 
 # --- Health -------------------------------------------------------------------
