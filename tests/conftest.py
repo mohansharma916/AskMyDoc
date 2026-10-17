@@ -1,0 +1,29 @@
+import hashlib
+import math
+import re
+
+import pytest
+
+
+class HashEmbedder:
+    """Deterministic bag-of-words embedder so unit tests never download models."""
+
+    dim = 64
+
+    def _vec(self, text: str) -> list[float]:
+        v = [0.0] * self.dim
+        for word in re.findall(r"\w+", text.lower()):
+            v[int(hashlib.md5(word.encode()).hexdigest(), 16) % self.dim] += 1.0
+        norm = math.sqrt(sum(x * x for x in v)) or 1.0
+        return [x / norm for x in v]
+
+    def embed_documents(self, texts):
+        return [self._vec(t) for t in texts]
+
+    def embed_query(self, text):
+        return self._vec(text)
+
+
+@pytest.fixture
+def embedder():
+    return HashEmbedder()
