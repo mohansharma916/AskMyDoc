@@ -2,7 +2,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, inspect
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -26,6 +26,7 @@ class Database:
             event.listen(self.engine, "connect", _enable_sqlite_foreign_keys)
         self._sessions = sessionmaker(self.engine, expire_on_commit=False)
         Base.metadata.create_all(self.engine)
+        add_missing_columns(self.engine)
 
     @contextmanager
     def session(self) -> Iterator[Session]:
@@ -52,3 +53,22 @@ def _enable_sqlite_foreign_keys(dbapi_connection, _record) -> None:
     cursor = dbapi_connection.cursor()
     cursor.execute("PRAGMA foreign_keys=ON")
     cursor.close()
+
+
+def add_missing_columns(engine: Engine) -> list[str]:
+    """Additive migration: add nullable columns that exist in the models but not yet in the
+    database (create_all never alters existing tables). Other changes need a real migration."""
+    existing = inspect(engine)
+    added = []
+    with engine.begin() as conn:
+        for table in Base.metadata.sorted_tables:
+            if not existing.has_table(table.name):
+                continue
+            present = {c["name"] for c in existing.get_columns(table.name)}
+            for column in table.columns:
+                if column.name in present or not column.nullable:
+                    continue
+                ddl = column.type.compile(dialect=engine.dialect)
+                conn.exec_driver_sql(f'ALTER TABLE "{table.name}" ADD COLUMN "{column.name}" {ddl}')
+                added.append(f"{table.name}.{column.name}")
+    return added
