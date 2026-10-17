@@ -38,7 +38,8 @@ def test_out_of_range_citation_is_flagged():
 
 def test_empty_answer_fails():
     assert not check_citations("", 5).ok
-    assert not check_citations("OK [1].", 5).ok  # too short to count as a sentence
+    check = check_citations("OK [1].", 5)  # too short to count as a sentence
+    assert not check.ok and check.issues == ["The answer has no complete, cited sentence."]
 
 
 def test_sentence_splitting_skips_fragments_and_keeps_decimals():

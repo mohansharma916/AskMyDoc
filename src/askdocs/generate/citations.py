@@ -49,6 +49,8 @@ class CitationCheck:
         issues = [f"Sentence without a citation: {s!r}" for s in self.uncited]
         if self.out_of_range:
             issues.append(f"Citations to excerpts that do not exist: {sorted(set(self.out_of_range))}")
+        if not self.ok and not issues:
+            issues.append("The answer has no complete, cited sentence.")
         return issues
 
 
