@@ -23,6 +23,15 @@ class Settings(BaseSettings):
     chunk_size: int = 512
     chunk_overlap: int = 64
 
+    # LLM
+    llm_provider: str = "anthropic"  # anthropic | ollama
+    llm_model: str = "claude-opus-5-5"
+    llm_api_key: str = ""  # falls back to ANTHROPIC_API_KEY when empty
+    llm_effort: str = "low"
+    llm_temperature: float = 0.1  # sent only to providers that accept it (Ollama)
+    llm_timeout_s: float = 30.0
+    ollama_url: str = "http://localhost:11434"
+
     # Prompts
     prompts_dir: Path = PROJECT_ROOT / "prompts"
     prompt_version: str = "answer_v1"
