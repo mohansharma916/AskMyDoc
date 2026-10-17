@@ -57,6 +57,7 @@ class Trace(Base):
     latency_ms: Mapped[dict] = mapped_column(JSON, default=dict)
     model: Mapped[str | None] = mapped_column(String(100), nullable=True)
     prompt_version: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    otel_trace_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 

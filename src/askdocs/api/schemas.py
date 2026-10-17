@@ -103,6 +103,7 @@ class AskResponse(BaseModel):
     latency_ms: dict[str, int]
     model: str | None
     prompt_version: str
+    trace_id: str | None = None
 
 
 # --- Feedback -----------------------------------------------------------------

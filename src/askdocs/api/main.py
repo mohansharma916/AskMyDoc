@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .. import __version__
 from ..services import Services
+from ..tracing import setup_tracing
 from .errors import install_error_handlers
 from .jobs import JobStore
 from .routes import router
@@ -12,6 +13,7 @@ from .routes import router
 
 def create_app(services: Services | None = None) -> FastAPI:
     services = services or Services()
+    setup_tracing(services.settings.tracing_enabled, services.settings.otel_endpoint)
     app = FastAPI(
         title="Ask My Docs",
         version=__version__,

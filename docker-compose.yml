@@ -8,5 +8,12 @@ services:
       - qdrant_data:/qdrant/storage
     restart: unless-stopped
 
+  phoenix:
+    image: arizephoenix/phoenix:version-11.0.0
+    profiles: ["tracing"]
+    ports:
+      - "6006:6006"   # UI and OTLP/HTTP at /v1/traces
+    restart: unless-stopped
+
 volumes:
   qdrant_data:

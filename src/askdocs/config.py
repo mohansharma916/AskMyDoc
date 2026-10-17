@@ -14,6 +14,10 @@ class Settings(BaseSettings):
     max_upload_mb: int = 25
     ingest_root: Path = PROJECT_ROOT / "data"  # POST /ingest {path} may only read below this folder
 
+    # Tracing (OTLP/HTTP: Phoenix at :6006 by default; Langfuse via its OTLP endpoint + OTEL_EXPORTER_OTLP_HEADERS)
+    tracing_enabled: bool = False
+    otel_endpoint: str = "http://localhost:6006/v1/traces"
+
     # Storage
     database_url: str = f"sqlite:///{PROJECT_ROOT / 'data' / 'askdocs.db'}"
     qdrant_url: str = "http://localhost:6333"  # or ":memory:" for tests / single-process runs
