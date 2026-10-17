@@ -17,10 +17,15 @@ class Settings(BaseSettings):
     # Models
     embed_model: str = "BAAI/bge-small-en-v1.5"
     embed_query_prefix: str = "Represent this sentence for searching relevant passages: "
+    rerank_model: str = "BAAI/bge-reranker-base"
 
     # Chunking (tokens)
     chunk_size: int = 512
     chunk_overlap: int = 64
+
+    # Retrieval depth
+    retrieve_k: int = 20
+    rerank_k: int = 5
 
 
 @lru_cache
