@@ -9,6 +9,11 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=PROJECT_ROOT / ".env", extra="ignore")
 
+    # API
+    cors_origins: str = "http://localhost:5173"
+    max_upload_mb: int = 25
+    ingest_root: Path = PROJECT_ROOT / "data"  # POST /ingest {path} may only read below this folder
+
     # Storage
     database_url: str = f"sqlite:///{PROJECT_ROOT / 'data' / 'askdocs.db'}"
     qdrant_url: str = "http://localhost:6333"  # or ":memory:" for tests / single-process runs
