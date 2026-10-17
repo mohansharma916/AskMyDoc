@@ -2,54 +2,69 @@
 
 ## 1. System Overview
 
-The application follows a decoupled client-server architecture. The React frontend handles user interactions and file uploads. The FastAPI backend orchestrates document ingestion and query routing through LangChain and LangGraph.
+Ask My Docs is two pipelines over one chunk store:
+
+- **Ingestion (offline):** parses documents, chunks them by structure, and writes every chunk to SQLite (metadata), Qdrant (vectors) and a BM25 keyword index.
+- **Query (online):** searches both indexes, fuses the results, reranks them, generates an answer from numbered chunks, and verifies the citations before returning. If retrieval confidence is low or the citations don't check out, it returns a "not found" answer instead.
+
+A React frontend talks to a FastAPI backend over REST and streams answers over server-sent events.
 
 ## 2. Component Architecture
 
-### 2.1 Frontend (React)
+### 2.1 Ingestion (`src/askdocs/ingest/`)
 
-- **Upload Manager:** Multipart form data submission for documents and golden datasets.
-- **Phase Controller:** State manager that appends a `phase_target` metadata flag to the user's query payload.
-- **Results Renderer:** Renders markdown answers, highlights exact source citations, and visualizes Ragas evaluation metrics.
+- **Parsers:** PyMuPDF (PDF), BeautifulSoup (HTML) and markdown-it (Markdown) parse each file; plain text splits on blank lines. Each block records its page and heading path. PDF headings are detected by font size, and headers or footers repeated on most pages are removed.
+- **Chunker:** splits by section first, then packs whole sentences up to 512 tokens with 64 tokens of overlap.
+- **Indexer:** computes a `content_hash` per file and skips unchanged files. Changed files are deleted and re-inserted. Before embedding, each chunk gets a short header with the document title and section path.
+- **CLI:** `python -m askdocs.ingest --path <file-or-folder>`
 
-### 2.2 Backend API (FastAPI)
+### 2.2 Retrieval and rerank (`src/askdocs/retrieve/`, `src/askdocs/rerank/`)
 
-| Endpoint | Description |
-|----------|-------------|
-| `/upload` | Handles incoming PDFs and markdown files. |
-| `/query` | Accepts the user query and the `phase_target` (1, 2, or 3). |
-| `/evaluate` | Triggers the Ragas offline evaluation script against the golden dataset. |
+- **BM25:** `rank_bm25`, rebuilt from the chunk table whenever it changes.
+- **Vector search:** Qdrant with cosine similarity. Each point id is its `chunk_id`, and the payload holds `doc_id`, `page`, `section_path` and the text.
+- **Fusion:** Reciprocal Rank Fusion of the top 20 from each index, keeping the top 20 unique chunks.
+- **Rerank:** the `BAAI/bge-reranker-base` cross-encoder scores the 20 candidates and keeps the top 5.
 
-### 2.3 RAG Engine (LangChain / LangGraph)
+### 2.3 Generation (`src/askdocs/generate/`)
 
-- **Ingestion Pipeline:** Reads files → Text Splitter (500–800 tokens, 100 overlap) → Embedding Model → Weaviate.
-- **Execution Router:**
-  - **Path 1 (Phase 1):** Weaviate Vector Search → Top K Chunks → Base Prompt → LLM → Response.
-  - **Path 2 (Phase 2):** Weaviate Hybrid Search (BM25 + Vector) → Cohere Cross-Encoder Re-ranker → Citation Guardrail Node → Versioned Prompt → LLM → Response.
-  - **Path 3 (Phase 3):** Ragas Evaluation Pipeline → Compares LLM outputs against the 50–200 golden QA pairs → Returns Faithfulness Metrics.
+- **Prompt:** numbered chunks `[1]…[5]` with rules to cite every sentence and to say "not found" when the chunks don't support an answer.
+- **LLM interface:** Claude through the Anthropic SDK, or a local model via Ollama.
+- **Citation validator:** parses the `[n]` markers and rejects answers with uncited sentences or with citations outside 1–5. It then regenerates once, or abstains.
 
-## 3. Data Flow Diagram
+### 2.4 API (`src/askdocs/api/`)
 
-### 3.1 Document Ingestion (Common)
+FastAPI at `/api/v1`: `ingest`, `ask`, `ask/stream` (SSE), `documents`, `feedback` and `health`. OpenAPI docs are served at `/docs`.
+
+### 2.5 Store (`src/askdocs/store/`)
+
+| Table | Key fields |
+|-------|------------|
+| documents | doc_id, file_name, source_uri, content_hash, title, ingested_at |
+| chunks | chunk_id, doc_id, text, page, section_path, token_count, position |
+| traces | query_id, question, answer, citations, usage, latency |
+| feedback | query_id, question, answer, cited_chunk_ids, rating, created_at |
+
+## 3. Data Flow
+
+### 3.1 Ingestion
 
 ```text
-User ──> UI Upload ──> FastAPI (/upload) ──> LangChain Splitter ──> Embeddings ──> Weaviate Vector Store
+Files ──> Parser (page + section) ──> Chunker (512 tok / 64 overlap) ──> content_hash check
+      ──> SQLite (documents, chunks) + Qdrant (vectors) + BM25 index
 ```
 
-### 3.2 Query Execution (Phase 1)
+### 3.2 Query
 
 ```text
-User ──> Selects Phase 1 ──> FastAPI (/query) ──> Vector Search Only ──> LLM Generation ──> Cites Exact Source
+Question ──> BM25 top 20 ─┐
+         └─> Vector top 20 ┴─> RRF top 20 ──> Cross-encoder top 5 ──> Abstain check
+         ──> LLM with numbered chunks ──> Citation validator (retry once) ──> Answer + citations + trace
 ```
 
-### 3.3 Query Execution (Phase 2)
+### 3.3 Evaluation (CI gate)
 
 ```text
-User ──> Selects Phase 2 ──> FastAPI (/query) ──> Hybrid Search ──> Cohere Re-ranker ──> LLM Guardrail (Check Support) ──> LLM Generation ──> Cites Exact Source
-```
-
-### 3.4 System Evaluation (Phase 3)
-
-```text
-User ──> Uploads Golden Dataset ──> FastAPI (/evaluate) ──> Ragas Script ──> Measures Faithfulness ──> UI displays CI build pass/fail status
+eval/corpus ──> ingest ──> eval/golden.jsonl questions ──> query pipeline
+            ──> Recall@5, MRR@10, faithfulness, correctness, citation precision, abstention, p95 latency
+            ──> eval/thresholds.yaml ──> pass / fail + PR comment
 ```
