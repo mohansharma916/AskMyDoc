@@ -34,3 +34,4 @@ TESTING.md
 .env
 frontend/.env
 .DS_Store
+frontend/*.tsbuildinfo
