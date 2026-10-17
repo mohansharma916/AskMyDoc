@@ -39,3 +39,22 @@ class Chunk(Base):
     position: Mapped[int] = mapped_column(Integer)
 
     document: Mapped[Document] = relationship(back_populates="chunks")
+
+
+class Trace(Base):
+    """One /ask request: what was asked, what was shown to the model, what came back."""
+
+    __tablename__ = "traces"
+
+    query_id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    question: Mapped[str] = mapped_column(Text)
+    answer: Mapped[str] = mapped_column(Text)
+    abstained: Mapped[bool] = mapped_column(default=False)
+    abstain_reason: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    citations: Mapped[list[dict]] = mapped_column(JSON, default=list)
+    context_chunk_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
+    usage: Mapped[dict] = mapped_column(JSON, default=dict)
+    latency_ms: Mapped[dict] = mapped_column(JSON, default=dict)
+    model: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    prompt_version: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
