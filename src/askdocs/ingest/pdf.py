@@ -10,6 +10,7 @@ from .parsers import Block, ParsedDocument, _HeadingStack, normalize
 HEADING_SIZE_RATIO = 1.15  # a line this much larger than body text is a heading
 MAX_HEADING_CHARS = 120
 REPEAT_PAGE_FRACTION = 0.5  # lines on at least this share of pages are headers/footers
+_ENDS_SENTENCE = re.compile(r"[.!?:][\"')\]]?\s*$")
 
 
 def _line_text(line: dict) -> str:
@@ -64,7 +65,8 @@ def parse_pdf(data: bytes, fallback_title: str) -> ParsedDocument:
     for blocks in pages:
         for block in blocks:
             for ln in block:
-                size_chars[_line_size(ln)] += len(_line_text(ln))
+                if _repeat_key(_line_text(ln)) not in repeated:  # headers/footers aren't body text
+                    size_chars[_line_size(ln)] += len(_line_text(ln))
     body_size = size_chars.most_common(1)[0][0] if size_chars else 0.0
     heading_sizes = sorted(
         {s for s in size_chars if body_size and s >= body_size * HEADING_SIZE_RATIO}, reverse=True
@@ -74,16 +76,17 @@ def parse_pdf(data: bytes, fallback_title: str) -> ParsedDocument:
     headings = _HeadingStack()
     title = meta_title
     out: list[Block] = []
+    paragraph: list[str] = []
+    start_page = 1
+
+    def flush() -> None:
+        text = normalize(re.sub(r"-\s*\n\s*", "", "\n".join(paragraph)))
+        if text:
+            out.append(Block(text, start_page, headings.path))
+        paragraph.clear()
+
     for page_no, blocks in enumerate(pages, start=1):
         for block in blocks:
-            paragraph: list[str] = []
-
-            def flush(page_no=page_no, paragraph=paragraph):
-                text = normalize(re.sub(r"-\s*\n\s*", "", "\n".join(paragraph)))
-                if text:
-                    out.append(Block(text, page_no, headings.path))
-                paragraph.clear()
-
             for ln in block:
                 text = _line_text(ln)
                 if _repeat_key(text) in repeated:
@@ -95,8 +98,14 @@ def parse_pdf(data: bytes, fallback_title: str) -> ParsedDocument:
                     if level_of[size] == 1 and not title:
                         title = heading
                     headings.push(level_of[size], heading)
-                else:
-                    paragraph.append(text)
-            flush()
+                    continue
+                if not paragraph:
+                    start_page = page_no
+                paragraph.append(text)
+            # PyMuPDF often emits one block per line: only end the paragraph at a sentence end,
+            # so sentences wrapped across blocks or pages stay whole.
+            if paragraph and _ENDS_SENTENCE.search(paragraph[-1]):
+                flush()
+    flush()
 
     return ParsedDocument(title or fallback_title, out)

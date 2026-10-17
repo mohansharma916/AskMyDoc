@@ -53,3 +53,16 @@ def test_pdf_metadata_title_wins_and_short_docs_keep_edge_lines():
     assert doc.title == "Official Title"
     # With a single page nothing counts as a repeated header/footer.
     assert any("Confidential" in b.text for b in doc.blocks)
+
+
+def test_sentences_wrapped_over_lines_and_pages_are_joined():
+    data = make_pdf(
+        [
+            [("Policy", 15), ("Employees get twenty-one days of", BODY), ("paid leave per year.", BODY)],
+            [("Unused days expire at the", BODY)],
+            [("end of January.", BODY)],
+        ]
+    )
+    texts = [(b.page, b.text) for b in parse_bytes("p.pdf", data).blocks]
+    assert (1, "Employees get twenty-one days of paid leave per year.") in texts
+    assert (2, "Unused days expire at the end of January.") in texts
