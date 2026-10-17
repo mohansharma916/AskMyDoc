@@ -16,6 +16,7 @@ data/*
 # Eval outputs
 eval/report.json
 eval/report.md
+reports/
 
 # Frontend
 node_modules/
