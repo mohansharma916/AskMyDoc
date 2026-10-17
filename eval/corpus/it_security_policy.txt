@@ -1,0 +1,21 @@
+Northwind Robotics IT and Security Policy
+
+This policy applies to all employees, contractors and interns of Northwind Robotics, a fictional company used as a test corpus.
+
+Accounts and passwords. Employees must use the company password manager, 1Password, for all work credentials. Passwords must be at least 14 characters long and unique per service. Passwords must never be shared, including with IT staff. Shared team credentials are stored in a 1Password shared vault owned by a named team lead.
+
+Two-factor authentication. Hardware-key two-factor authentication is mandatory on Google Workspace, GitHub and the VPN. Each employee receives two hardware security keys on their first day: one for daily use and one backup kept in a safe place. A lost security key must be reported within 24 hours so that it can be revoked.
+
+Devices. Every new employee receives a laptop of their choice, either macOS or Linux. Laptops are refreshed every three years. Full-disk encryption and automatic screen lock after 5 minutes are required and enforced by device management. Personal devices may be used for email and chat only if they are enrolled in device management.
+
+Lost or stolen equipment. Lost or stolen equipment must be reported to the IT Help Desk within 24 hours through the #it-help channel. IT will remotely lock and wipe the device. A police report is required for stolen laptops.
+
+Phishing and incident reporting. Suspected phishing emails must be reported using the Report Phish button in Gmail. Do not forward suspicious emails to colleagues. Any suspected security incident, including a misdirected email containing customer data, must be reported to security@northwind.example within one hour of discovery.
+
+Data classification. Northwind data is classified as Public, Internal, Confidential or Restricted. Customer data and employee personal data are Restricted. Restricted data must never be stored on personal devices or in personal cloud accounts, and may only be shared outside the company under a signed data processing agreement.
+
+Security training. Security awareness training is mandatory within the first two weeks of employment and annually after that. Engineers also complete secure coding training once a year.
+
+Access reviews. Managers review their team's access to production systems every quarter. Access for departing employees is revoked on their last working day by 18:00 local time.
+
+Software installation. Employees may install software from the approved catalogue in the Self Service app. Other software requires an IT review, which usually takes up to five working days.
