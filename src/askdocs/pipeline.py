@@ -56,10 +56,12 @@ class AskResult:
     model: str | None
     prompt_version: str
     contexts: list[Candidate] = field(default_factory=list, repr=False)  # chunks shown to the LLM
+    ranked_chunk_ids: list[str] = field(default_factory=list, repr=False)  # full ranking, for eval metrics
 
     def to_dict(self) -> dict:
         data = asdict(self)
         data.pop("contexts")
+        data.pop("ranked_chunk_ids")
         return data
 
 
@@ -124,8 +126,9 @@ class AskPipeline:
     # --- stages ---------------------------------------------------------------
 
     def retrieve(
-        self, question: str, top_k: int, doc_ids: list[str] | None, options: PipelineOptions, latency: dict
+        self, question: str, doc_ids: list[str] | None, options: PipelineOptions, latency: dict
     ) -> list[Candidate]:
+        """All retrieved candidates, best first (reranked when enabled); callers keep the top k."""
         start = time.perf_counter()
         candidates = self.retriever.retrieve(question, self.retrieve_k, doc_ids, options.mode)
         latency["retrieve"] = _ms(start)
@@ -137,7 +140,7 @@ class AskPipeline:
             except FutureTimeout as exc:
                 raise StageTimeout("rerank", self.rerank_timeout_s) from exc
             latency["rerank"] = _ms(start)
-        return candidates[:top_k]
+        return candidates
 
     def abstain_reason(self, chunks: list[Candidate], options: PipelineOptions) -> str | None:
         if not chunks:
@@ -159,6 +162,7 @@ class AskPipeline:
         latency: dict,
         started: float,
         abstain_reason: str | None,
+        ranked: list[Candidate],
     ) -> AskResult:
         latency["total"] = _ms(started)
         abstained = abstain_reason is not None
@@ -174,6 +178,7 @@ class AskPipeline:
             model=self.llm.model if usage.input_tokens else None,
             prompt_version=self.prompt.version,
             contexts=chunks,
+            ranked_chunk_ids=[c.chunk_id for c in ranked],
         )
         self._record(result)
         return result
@@ -219,9 +224,10 @@ class AskPipeline:
         options = options or PipelineOptions()
         started, latency, usage = time.perf_counter(), {}, Usage()
         query_id = new_query_id()
-        chunks = self.retrieve(question, top_k or self.rerank_k, doc_ids, options, latency)
+        ranked = self.retrieve(question, doc_ids, options, latency)
+        chunks = ranked[: top_k or self.rerank_k]
         if reason := self.abstain_reason(chunks, options):
-            return self._finish(query_id, question, "", chunks, usage, latency, started, reason)
+            return self._finish(query_id, question, "", chunks, usage, latency, started, reason, ranked)
 
         start = time.perf_counter()
         messages = self._messages(question, chunks)
@@ -239,7 +245,7 @@ class AskPipeline:
             else:
                 reason = "citation_check_failed"
         latency["generate"] = _ms(start)
-        return self._finish(query_id, question, completion.text, chunks, usage, latency, started, reason)
+        return self._finish(query_id, question, completion.text, chunks, usage, latency, started, reason, ranked)
 
     def ask_stream(
         self,
@@ -253,9 +259,10 @@ class AskPipeline:
         query_id = new_query_id()
         yield Event("meta", {"query_id": query_id})
 
-        chunks = self.retrieve(question, top_k or self.rerank_k, doc_ids, options, latency)
+        ranked = self.retrieve(question, doc_ids, options, latency)
+        chunks = ranked[: top_k or self.rerank_k]
         if reason := self.abstain_reason(chunks, options):
-            result = self._finish(query_id, question, "", chunks, usage, latency, started, reason)
+            result = self._finish(query_id, question, "", chunks, usage, latency, started, reason, ranked)
             yield Event("done", result.to_dict())
             return
 
@@ -290,5 +297,5 @@ class AskPipeline:
             else:
                 reason = "citation_check_failed"
         latency["generate"] = _ms(start)
-        result = self._finish(query_id, question, completion.text, chunks, usage, latency, started, reason)
+        result = self._finish(query_id, question, completion.text, chunks, usage, latency, started, reason, ranked)
         yield Event("done", result.to_dict())

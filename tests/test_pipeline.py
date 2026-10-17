@@ -23,6 +23,8 @@ def test_cited_answer_with_usage_latency_and_trace(make_services):
         trace = s.scalars(select(Trace)).one()
     assert trace.query_id == result.query_id and trace.citations[0]["chunk_id"] == cite.chunk_id
     assert trace.context_chunk_ids == [c.chunk_id for c in result.contexts]
+    assert result.ranked_chunk_ids[: len(result.contexts)] == trace.context_chunk_ids
+    assert len(result.ranked_chunk_ids) == 3  # every retrieved chunk, not just the top k
 
 
 def test_prompt_contains_numbered_chunks(make_services):
