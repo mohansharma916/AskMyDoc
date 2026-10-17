@@ -79,3 +79,90 @@ def test_openapi_docs(client):
     assert client.get("/docs").status_code == 200
     paths = client.get("/openapi.json").json()["paths"]
     assert {"/api/v1/health", "/api/v1/ingest", "/api/v1/documents"} <= paths.keys()
+
+
+def parse_sse(text: str) -> list[tuple[str, dict]]:
+    import json
+
+    events = []
+    for block in text.strip().split("\n\n"):
+        lines = dict(line.split(": ", 1) for line in block.splitlines())
+        events.append((lines["event"], json.loads(lines["data"])))
+    return events
+
+
+def test_ask_returns_cited_answer(client):
+    r = client.post("/api/v1/ask", json={"question": "How many weeks of parental leave?", "top_k": 3})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["query_id"].startswith("q_") and not body["abstained"]
+    cite = body["citations"][0]
+    assert (cite["n"], cite["doc_id"], cite["file_name"], cite["page"]) == (1, "leave", "leave.md", None)
+    assert cite["section_path"] == ["Leave"] and "20 weeks" in cite["snippet"]
+    assert body["usage"]["input_tokens"] == 100
+    assert {"retrieve", "rerank", "generate", "total"} <= body["latency_ms"].keys()
+
+
+def test_ask_validation_errors(client):
+    def err(payload):
+        r = client.post("/api/v1/ask", json=payload)
+        return r.status_code, r.json()["error"]["code"], r.json()["error"]["message"]
+
+    status, code, message = err({"question": "   "})
+    assert (status, code) == (400, "invalid_request") and "empty" in message
+    assert err({"question": "x", "top_k": 50})[:2] == (400, "invalid_request")
+    status, _, message = err({"question": "x", "filters": {"doc_ids": ["nope"]}})
+    assert status == 400 and "nope" in message
+
+
+def test_ask_with_filter(client):
+    r = client.post("/api/v1/ask", json={"question": "laptops reported", "filters": {"doc_ids": ["it"]}})
+    assert r.status_code == 200
+
+
+@pytest.mark.parametrize(
+    "error, status, code",
+    [
+        ("LLMRateLimited", 429, "rate_limited"),
+        ("LLMTimeout", 504, "timeout"),
+        ("LLMNotConfigured", 500, "internal_error"),
+        ("LLMRefusal", 422, "refused"),
+    ],
+)
+def test_llm_errors_map_to_status(client, monkeypatch, error, status, code):
+    from askdocs.generate import llm as llm_module
+
+    def fail(*a, **k):
+        raise getattr(llm_module, error)("upstream problem")
+
+    monkeypatch.setattr(client.services.llm, "complete", fail)
+    r = client.post("/api/v1/ask", json={"question": "parental leave weeks"})
+    assert (r.status_code, r.json()["error"]["code"]) == (status, code)
+
+
+def test_unexpected_error_hides_details(client, monkeypatch):
+    monkeypatch.setattr(client.services.llm, "complete", lambda *a: 1 / 0)
+    r = client.post("/api/v1/ask", json={"question": "parental leave weeks"})
+    assert r.status_code == 500 and r.json()["error"]["message"] == "Unexpected server error."
+
+
+def test_ask_stream_sse(client):
+    r = client.post("/api/v1/ask/stream", json={"question": "parental leave weeks"})
+    assert r.status_code == 200 and r.headers["content-type"].startswith("text/event-stream")
+    events = parse_sse(r.text)
+    assert events[0][0] == "meta" and events[-1][0] == "done"
+    assert "".join(d["text"] for e, d in events if e == "token") == events[-1][1]["answer"]
+
+
+def test_ask_stream_error_event(client, monkeypatch):
+    from askdocs.generate.llm import LLMTimeout
+
+    def fail(*a, **k):
+        raise LLMTimeout("slow")
+        yield  # pragma: no cover
+
+    monkeypatch.setattr(client.services.llm, "stream", fail)
+    events = parse_sse(client.post("/api/v1/ask/stream", json={"question": "parental leave weeks"}).text)
+    assert events[-1][0] == "error" and events[-1][1]["code"] == "timeout" and events[-1][1]["status"] == 504
+    r = client.post("/api/v1/ask/stream", json={"question": ""})
+    assert r.status_code == 400

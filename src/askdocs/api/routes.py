@@ -1,18 +1,29 @@
+import json
 import os
 from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, File, Form, Request, UploadFile
+from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
 
 from ..ingest.parsers import SUPPORTED_EXTENSIONS
 from ..services import Services
 from ..store.models import Chunk, Document
-from .errors import APIError
+from .errors import APIError, classify, error_body
 from .jobs import JobStore
-from .schemas import DocumentList, DocumentOut, ErrorResponse, HealthResponse, IngestJob, LLMStatus
+from .schemas import (
+    AskRequest,
+    AskResponse,
+    DocumentList,
+    DocumentOut,
+    ErrorResponse,
+    HealthResponse,
+    IngestJob,
+    LLMStatus,
+)
 
-ERRORS = {400: {"model": ErrorResponse}, 404: {"model": ErrorResponse}, 500: {"model": ErrorResponse}}
+ERRORS = {code: {"model": ErrorResponse} for code in (400, 404, 413, 429, 500, 504)}
 
 router = APIRouter(prefix="/api/v1", responses=ERRORS)
 
@@ -116,3 +127,49 @@ def documents(request: Request) -> DocumentList:
 def delete_document(doc_id: str, request: Request) -> None:
     if not services(request).indexer.delete(doc_id):
         raise APIError(404, "not_found", f"Unknown doc_id '{doc_id}'.")
+
+
+# --- Ask ----------------------------------------------------------------------
+
+
+def _doc_filter(request: Request, body: AskRequest) -> list[str] | None:
+    doc_ids = body.filters.doc_ids if body.filters else None
+    if not doc_ids:
+        return None
+    with services(request).db.session() as session:
+        known = set(session.scalars(select(Document.doc_id).where(Document.doc_id.in_(doc_ids))))
+    if unknown := sorted(set(doc_ids) - known):
+        raise APIError(400, "invalid_request", f"Unknown doc_ids in filters: {', '.join(unknown)}")
+    return doc_ids
+
+
+@router.post("/ask", response_model=AskResponse, tags=["ask"])
+def ask(body: AskRequest, request: Request) -> dict:
+    doc_ids = _doc_filter(request, body)
+    return services(request).pipeline.ask(body.question, top_k=body.top_k, doc_ids=doc_ids).to_dict()
+
+
+def _sse(event: str, data: dict) -> str:
+    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False, default=str)}\n\n"
+
+
+@router.post(
+    "/ask/stream",
+    tags=["ask"],
+    response_class=StreamingResponse,
+    responses={200: {"content": {"text/event-stream": {}}, "description": "meta, token, retry, done or error events"}},
+)
+def ask_stream(body: AskRequest, request: Request) -> StreamingResponse:
+    doc_ids = _doc_filter(request, body)  # validation errors are returned as normal JSON errors
+    pipeline = services(request).pipeline
+
+    def events():
+        try:
+            for event in pipeline.ask_stream(body.question, top_k=body.top_k, doc_ids=doc_ids):
+                yield _sse(event.type, event.data)
+        except Exception as exc:  # the response has started, so report errors as an event
+            status, code, message = classify(exc)
+            yield _sse("error", {**error_body(code, message)["error"], "status": status})
+
+    headers = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
+    return StreamingResponse(events(), media_type="text/event-stream", headers=headers)
