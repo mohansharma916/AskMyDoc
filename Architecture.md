@@ -33,16 +33,33 @@ A React frontend talks to a FastAPI backend over REST and streams answers over s
 
 ### 2.4 API (`src/askdocs/api/`)
 
-FastAPI at `/api/v1`: `ingest`, `ask`, `ask/stream` (SSE), `documents`, `feedback` and `health`. OpenAPI docs are served at `/docs`.
+FastAPI at `/api/v1`: `ingest` (background jobs), `ask`, `ask/stream` (SSE), `documents`, `feedback` and `health`. OpenAPI docs are served at `/docs`. Errors share one JSON shape with a trace id.
 
-### 2.5 Store (`src/askdocs/store/`)
+### 2.5 Frontend (`frontend/`)
+
+React + TypeScript (Vite, Tailwind, TanStack Query) with these components:
+
+- **AskBox:** question input, with a stop-generation button.
+- **AnswerView:** renders streamed tokens; each `[n]` is a clickable chip.
+- **CitationPanel:** shows the file, page and section of a cited source, highlighting the words it shares with the citing sentence.
+- **Feedback:** helpful / not helpful buttons.
+- **UploadPanel:** drag-and-drop ingest with job polling.
+- **NotFoundState:** shown when the system abstains.
+
+In Docker, Nginx serves the build and proxies `/api`, with buffering off for server-sent events.
+
+### 2.6 Tracing (`src/askdocs/tracing.py`)
+
+Each request produces an OpenTelemetry trace: an `ask` root span with `retrieve`, `rerank` and one `generate` span per attempt. Traces are exported over OTLP/HTTP to Arize Phoenix or Langfuse. The trace id is returned to the client and stored on the `traces` row next to any feedback.
+
+### 2.7 Store (`src/askdocs/store/`)
 
 | Table | Key fields |
 |-------|------------|
 | documents | doc_id, file_name, source_uri, content_hash, title, ingested_at |
 | chunks | chunk_id, doc_id, text, page, section_path, token_count, position |
-| traces | query_id, question, answer, citations, usage, latency |
-| feedback | query_id, question, answer, cited_chunk_ids, rating, created_at |
+| traces | query_id, question, answer, abstained, citations, context_chunk_ids, usage, latency_ms, prompt_version, otel_trace_id |
+| feedback | query_id, question, answer, cited_chunk_ids, rating, comment, created_at |
 
 ## 3. Data Flow
 
@@ -67,4 +84,10 @@ Question ──> BM25 top 20 ─┐
 eval/corpus ──> ingest ──> eval/golden.jsonl questions ──> query pipeline
             ──> Recall@5, MRR@10, faithfulness, correctness, citation precision, abstention, p95 latency
             ──> eval/thresholds.yaml ──> pass / fail + PR comment
+```
+
+### 3.4 Deployment
+
+```text
+docker compose up ──> qdrant (6333) + api (FastAPI, 8000) + frontend (Nginx, 8080) [+ phoenix (6006) with --profile tracing]
 ```
