@@ -39,3 +39,13 @@ def test_deleting_document_cascades_to_chunks():
 
 def test_ping():
     assert Database("sqlite:///:memory:").ping()
+
+
+def test_in_memory_database_is_shared_across_threads():
+    from concurrent.futures import ThreadPoolExecutor
+
+    db = Database("sqlite:///:memory:")
+    with db.session() as s:
+        s.add(_doc())
+    with ThreadPoolExecutor(1) as pool:
+        assert pool.submit(lambda: db.session().__enter__().get(Document, "hr-handbook")).result() is not None
