@@ -68,9 +68,7 @@ def parse_pdf(data: bytes, fallback_title: str) -> ParsedDocument:
                 if _repeat_key(_line_text(ln)) not in repeated:  # headers/footers aren't body text
                     size_chars[_line_size(ln)] += len(_line_text(ln))
     body_size = size_chars.most_common(1)[0][0] if size_chars else 0.0
-    heading_sizes = sorted(
-        {s for s in size_chars if body_size and s >= body_size * HEADING_SIZE_RATIO}, reverse=True
-    )
+    heading_sizes = sorted({s for s in size_chars if body_size and s >= body_size * HEADING_SIZE_RATIO}, reverse=True)
     level_of = {size: i + 1 for i, size in enumerate(heading_sizes)}
 
     headings = _HeadingStack()

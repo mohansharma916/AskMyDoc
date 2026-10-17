@@ -5,6 +5,7 @@ from pathlib import Path
 from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from .models import Base
 
@@ -15,8 +16,12 @@ class Database:
     def __init__(self, url: str):
         if url.startswith("sqlite:///") and url != "sqlite:///:memory:":
             Path(url.removeprefix("sqlite:///")).parent.mkdir(parents=True, exist_ok=True)
-        connect_args = {"check_same_thread": False} if url.startswith("sqlite") else {}
-        self.engine: Engine = create_engine(url, connect_args=connect_args)
+        kwargs: dict = {}
+        if url.startswith("sqlite"):
+            kwargs["connect_args"] = {"check_same_thread": False}
+        if url in ("sqlite://", "sqlite:///:memory:"):
+            kwargs["poolclass"] = StaticPool  # one shared connection, or each thread sees an empty DB
+        self.engine: Engine = create_engine(url, **kwargs)
         if url.startswith("sqlite"):
             event.listen(self.engine, "connect", _enable_sqlite_foreign_keys)
         self._sessions = sessionmaker(self.engine, expire_on_commit=False)

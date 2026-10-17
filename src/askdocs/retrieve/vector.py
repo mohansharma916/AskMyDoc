@@ -5,6 +5,8 @@ from dataclasses import dataclass
 
 from qdrant_client import QdrantClient, models
 
+from .types import Candidate
+
 BATCH_SIZE = 128
 
 
@@ -60,6 +62,31 @@ class QdrantIndex:
             points_selector=models.FilterSelector(filter=_doc_filter([doc_id])),
             wait=True,
         )
+
+    def search(self, vector: list[float], k: int = 20, doc_ids: list[str] | None = None) -> list[Candidate]:
+        self.ensure_collection()
+        if doc_ids is not None and not doc_ids:
+            return []
+        response = self.client.query_points(
+            self.collection,
+            query=vector,
+            limit=k,
+            query_filter=_doc_filter(doc_ids) if doc_ids else None,
+            with_payload=True,
+        )
+        return [
+            Candidate(
+                chunk_id=str(p.id),
+                doc_id=p.payload["doc_id"],
+                text=p.payload.get("text", ""),
+                file_name=p.payload.get("file_name", ""),
+                title=p.payload.get("title", ""),
+                page=p.payload.get("page"),
+                section_path=tuple(p.payload.get("section_path") or ()),
+                scores={"vector": float(p.score)},
+            )
+            for p in response.points
+        ]
 
     def count(self) -> int:
         self.ensure_collection()
