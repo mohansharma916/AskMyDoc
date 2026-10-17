@@ -58,7 +58,7 @@ def _generation_metrics(services, golden: list[dict], options: PipelineOptions) 
     from .run_eval import aggregate, judge_rows, run_pipeline
 
     results = run_pipeline(services, golden, options)
-    judge_rows(results, os.getenv("JUDGE_MODEL", services.settings.llm_model), services.settings.llm_api_key or None)
+    judge_rows(results, os.getenv("JUDGE_MODEL") or services.settings.llm_model, services.settings.llm_api_key or None)
     m = aggregate(results)
     return {k: m[k] for k in ("faithfulness", "citation_precision", "answer_correctness", "false_abstention")}
 

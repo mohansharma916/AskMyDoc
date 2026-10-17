@@ -120,7 +120,7 @@ def run(services=None, items: list[dict] | None = None, judge: bool = True) -> d
     s = services.settings
     items = items if items is not None else load_golden()
     rows = run_pipeline(services, items)
-    judge_model = os.getenv("JUDGE_MODEL", s.llm_model)
+    judge_model = os.getenv("JUDGE_MODEL") or s.llm_model
     if judge:
         judge_rows(rows, judge_model, s.llm_api_key or None)
     metrics = aggregate(rows)

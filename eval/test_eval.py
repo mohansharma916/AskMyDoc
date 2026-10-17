@@ -3,6 +3,8 @@
 pytest eval/
 """
 
+import os
+
 import pytest
 
 from askdocs.config import get_settings
@@ -14,7 +16,10 @@ from .scoring import load_thresholds
 @pytest.fixture(scope="session")
 def report():
     if not has_llm_credentials(get_settings()):
-        pytest.skip("No LLM credentials: set LLM_API_KEY (or ANTHROPIC_API_KEY) to run the eval gate.")
+        message = "No LLM credentials: set LLM_API_KEY (or ANTHROPIC_API_KEY) to run the eval gate."
+        if os.getenv("EVAL_REQUIRE_LLM"):  # CI must not pass silently without a key
+            pytest.fail(message)
+        pytest.skip(message)
     result = run()
     write_report(result)
     return result

@@ -108,4 +108,3 @@ def chunk_blocks(blocks: list[Block], chunk_size: int = 512, overlap: int = 64) 
         if current:
             emit(current)
     return chunks
-
