@@ -43,3 +43,4 @@ select = ["E", "F", "I", "B", "UP", "SIM"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+filterwarnings = ["ignore:builtin type .* has no __module__ attribute:DeprecationWarning"]
