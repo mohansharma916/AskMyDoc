@@ -6,7 +6,7 @@ from askdocs.api.main import create_app
 
 @pytest.fixture
 def client(make_services, tmp_path):
-    services = make_services(ingest_root=tmp_path, max_upload_mb=1)
+    services = make_services(ingest_root=tmp_path, max_upload_mb=1, warmup_models=False)
     app = create_app(services)
     with TestClient(app, raise_server_exceptions=False) as c:
         c.services = services
@@ -190,3 +190,13 @@ def test_feedback_errors(client):
     assert (r.status_code, r.json()["error"]["code"]) == (404, "not_found")
     r = client.post("/api/v1/feedback", json={"query_id": "q_x", "rating": "meh"})
     assert r.status_code == 400
+
+
+def test_warm_up_loads_models_and_survives_failures(make_services, caplog):
+    from askdocs.api.main import warm_up
+
+    services = make_services()
+    warm_up(services)  # fake embedder and reranker: just must not raise
+    services.__dict__["reranker"] = None  # broken reranker
+    warm_up(services)
+    assert "warm-up failed" in caplog.text
