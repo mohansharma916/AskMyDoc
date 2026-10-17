@@ -9,7 +9,7 @@ from sqlalchemy import func, select
 
 from ..ingest.parsers import SUPPORTED_EXTENSIONS
 from ..services import Services
-from ..store.models import Chunk, Document
+from ..store.models import Chunk, Document, Feedback, Trace
 from .errors import APIError, classify, error_body
 from .jobs import JobStore
 from .schemas import (
@@ -18,6 +18,8 @@ from .schemas import (
     DocumentList,
     DocumentOut,
     ErrorResponse,
+    FeedbackRequest,
+    FeedbackResponse,
     HealthResponse,
     IngestJob,
     LLMStatus,
@@ -173,3 +175,22 @@ def ask_stream(body: AskRequest, request: Request) -> StreamingResponse:
 
     headers = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
     return StreamingResponse(events(), media_type="text/event-stream", headers=headers)
+
+
+# --- Feedback -----------------------------------------------------------------
+
+
+@router.post("/feedback", response_model=FeedbackResponse, status_code=201, tags=["feedback"])
+def feedback(body: FeedbackRequest, request: Request) -> FeedbackResponse:
+    """Rate an answer; rating the same query again replaces the earlier rating."""
+    with services(request).db.session() as session:
+        trace = session.get(Trace, body.query_id)
+        if trace is None:
+            raise APIError(404, "not_found", f"Unknown query_id '{body.query_id}'.")
+        row = session.get(Feedback, body.query_id) or Feedback(query_id=body.query_id)
+        row.question, row.answer = trace.question, trace.answer
+        row.cited_chunk_ids = [c["chunk_id"] for c in trace.citations]
+        row.rating, row.comment = body.rating, body.comment
+        session.add(row)
+        session.flush()
+        return FeedbackResponse(query_id=row.query_id, rating=row.rating, created_at=row.created_at)

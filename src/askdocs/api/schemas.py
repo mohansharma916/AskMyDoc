@@ -105,6 +105,21 @@ class AskResponse(BaseModel):
     prompt_version: str
 
 
+# --- Feedback -----------------------------------------------------------------
+
+
+class FeedbackRequest(BaseModel):
+    query_id: str
+    rating: Literal["helpful", "not_helpful"]
+    comment: str | None = Field(None, max_length=2000)
+
+
+class FeedbackResponse(BaseModel):
+    query_id: str
+    rating: Literal["helpful", "not_helpful"]
+    created_at: datetime
+
+
 # --- Health -------------------------------------------------------------------
 
 

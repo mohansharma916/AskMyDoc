@@ -166,3 +166,27 @@ def test_ask_stream_error_event(client, monkeypatch):
     assert events[-1][0] == "error" and events[-1][1]["code"] == "timeout" and events[-1][1]["status"] == 504
     r = client.post("/api/v1/ask/stream", json={"question": ""})
     assert r.status_code == 400
+
+
+def test_feedback_is_stored_with_the_trace(client):
+    from askdocs.store.models import Feedback
+
+    answer = client.post("/api/v1/ask", json={"question": "parental leave weeks"}).json()
+    r = client.post("/api/v1/feedback", json={"query_id": answer["query_id"], "rating": "helpful"})
+    assert r.status_code == 201 and r.json()["rating"] == "helpful"
+    r = client.post(
+        "/api/v1/feedback", json={"query_id": answer["query_id"], "rating": "not_helpful", "comment": "too short"}
+    )
+    assert r.status_code == 201
+
+    with client.services.db.session() as s:
+        [row] = s.query(Feedback).all()
+    assert (row.rating, row.comment, row.question) == ("not_helpful", "too short", "parental leave weeks")
+    assert row.cited_chunk_ids == [c["chunk_id"] for c in answer["citations"]]
+
+
+def test_feedback_errors(client):
+    r = client.post("/api/v1/feedback", json={"query_id": "q_nope", "rating": "helpful"})
+    assert (r.status_code, r.json()["error"]["code"]) == (404, "not_found")
+    r = client.post("/api/v1/feedback", json={"query_id": "q_x", "rating": "meh"})
+    assert r.status_code == 400
