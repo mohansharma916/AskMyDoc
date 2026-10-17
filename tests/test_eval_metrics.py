@@ -38,3 +38,18 @@ def test_retrieval_metrics_ignores_unanswerable():
 def test_markdown_table():
     md = to_markdown([{"config": "BM25 only", "recall_at_5": 0.9, "mrr_at_10": 0.8}], 40)
     assert "| BM25 only | 0.900 | 0.800 |" in md and "40 answerable" in md
+    row = {"config": "Full", "recall_at_5": 1, "mrr_at_10": 1, "faithfulness": 0.9, "citation_precision": None}
+    md = to_markdown([row], 40)
+    assert "Citation precision" in md and "| Full | 1.000 | 1.000 | 0.900 | – | – |" in md
+
+
+def test_ablation_run_on_fake_stack(make_services, monkeypatch):
+    from eval import ablation
+
+    services = make_services()
+    leave = services.indexer.list_documents()[1].chunks[0].chunk_id
+    golden = [{"id": "a", "question": "parental leave weeks", "answerable": True, "evidence": [{"chunk_ids": [leave]}]}]
+    monkeypatch.setattr(ablation, "load_golden", lambda: golden)
+    rows = ablation.run(services)
+    assert [r["config"] for r in rows][-1] == "Hybrid + rerank + citation validator"
+    assert all(r["recall_at_5"] == 1.0 for r in rows)

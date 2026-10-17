@@ -1,0 +1,172 @@
+{
+  "P1-U1": {
+    "status": "PASS",
+    "pages": [
+      1,
+      2,
+      3
+    ],
+    "blocks": 4
+  },
+  "P1-U3": {
+    "status": "PASS",
+    "header_found": false,
+    "footer_found": false
+  },
+  "P1-U2": {
+    "status": "PASS",
+    "section_path": [
+      "Company Policy",
+      "Security",
+      "Passwords"
+    ]
+  },
+  "P1-U4": {
+    "status": "PASS",
+    "chunk_count": 4,
+    "max_tokens": 473,
+    "overlap_sizes": [
+      55,
+      55,
+      55
+    ]
+  },
+  "P1-U5": {
+    "status": "PASS"
+  },
+  "P1-U6": {
+    "status": "PASS",
+    "hash1": "bdf53954482b35ae",
+    "hash3": "d951b31bc77b4621"
+  },
+  "P1-U7": {
+    "status": "PASS",
+    "failed": 2,
+    "indexed": 1
+  },
+  "P1-I1": {
+    "status": "PASS",
+    "sqlite": 41,
+    "bm25": 41,
+    "qdrant": 41
+  },
+  "P1-I2": {
+    "status": "PASS",
+    "coverage_pct": {
+      "benefits_guide.pdf": 100.0,
+      "travel_and_expenses.html": 100.0,
+      "employee_handbook.md": 100.0,
+      "engineering_oncall.md": 100.0,
+      "it_security_policy.txt": 100.0
+    }
+  },
+  "P1-I3": {
+    "status": "PASS",
+    "total_chunks": 41,
+    "missing_doc_id": 0,
+    "bad_pdf_page": 0
+  },
+  "P1-I4": {
+    "status": "PASS",
+    "dim": 384,
+    "distinct_cosine": 0.592855159053267
+  },
+  "P1-I5": {
+    "status": "PASS",
+    "new_chunks": 0,
+    "unchanged_files": 5
+  },
+  "P1-I6": {
+    "status": "PASS",
+    "status_returned": "updated",
+    "new_total_chunks": 42
+  },
+  "P1-I7": {
+    "status": "PASS"
+  },
+  "P1-I8": {
+    "status": "PASS",
+    "spot_checks": [
+      {
+        "chunk_id": "dac87841",
+        "doc_id": "engineering-oncall",
+        "page": null,
+        "section_path": "Engineering On-call Guide > Handover",
+        "snippet": "At the end of each shift, the outgoing primary writes a hand",
+        "match": true
+      },
+      {
+        "chunk_id": "b281037e",
+        "doc_id": "benefits-guide",
+        "page": 3,
+        "section_path": "Northwind Benefits Guide > Life and Disability Insurance",
+        "snippet": "Life insurance pays three times annual base salary. Long-ter",
+        "match": true
+      },
+      {
+        "chunk_id": "c2d30f5b",
+        "doc_id": "benefits-guide",
+        "page": 1,
+        "section_path": "Northwind Benefits Guide > Health Insurance",
+        "snippet": "Northwind pays 100% of the health insurance premium for empl",
+        "match": true
+      },
+      {
+        "chunk_id": "8b411345",
+        "doc_id": "employee-handbook",
+        "page": null,
+        "section_path": "Northwind Robotics Employee Handbook > Time Off > Bereavement and other leave",
+        "snippet": "Employees receive up to 5 paid days of bereavement leave for",
+        "match": true
+      },
+      {
+        "chunk_id": "8cf383cc",
+        "doc_id": "employee-handbook",
+        "page": null,
+        "section_path": "Northwind Robotics Employee Handbook > Time Off > Sick leave",
+        "snippet": "Employees receive up to 10 paid sick days per year. Sick lea",
+        "match": true
+      },
+      {
+        "chunk_id": "0a7474f7",
+        "doc_id": "employee-handbook",
+        "page": null,
+        "section_path": "Northwind Robotics Employee Handbook > Time Off > Public holidays and winter closure",
+        "snippet": "Northwind observes 10 company-wide public holidays each year",
+        "match": true
+      },
+      {
+        "chunk_id": "f72f67e2",
+        "doc_id": "benefits-guide",
+        "page": 3,
+        "section_path": "Northwind Benefits Guide > Questions",
+        "snippet": "Questions about benefits go to the People Operations team th",
+        "match": true
+      },
+      {
+        "chunk_id": "2d7f3267",
+        "doc_id": "benefits-guide",
+        "page": 3,
+        "section_path": "Northwind Benefits Guide > Home Office and Commuting",
+        "snippet": "New employees receive a one-time home-office stipend of 750 ",
+        "match": true
+      },
+      {
+        "chunk_id": "df73c1ce",
+        "doc_id": "benefits-guide",
+        "page": 2,
+        "section_path": "Northwind Benefits Guide > Wellbeing",
+        "snippet": "A monthly wellness stipend of 60 USD can be spent on gym mem",
+        "match": true
+      },
+      {
+        "chunk_id": "4239a695",
+        "doc_id": "travel-and-expenses",
+        "page": null,
+        "section_path": "Travel and Expenses Policy > Submitting receipts",
+        "snippet": "Receipts must be submitted in the Expensify tool within 30 d",
+        "match": true
+      }
+    ]
+  }
+}
