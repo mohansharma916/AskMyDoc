@@ -115,12 +115,13 @@ export async function* streamAsk(question: string, signal?: AbortSignal, topK = 
     const err = (await res.json().catch(() => ({})))?.error ?? {};
     throw new ApiError(res.status, err.code ?? "internal_error", err.message ?? `Request failed (${res.status})`);
   }
-  const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
   const parser = new SSEParser();
   for (;;) {
     const { value, done } = await reader.read();
     if (done) return;
-    for (const message of parser.push(value)) {
+    for (const message of parser.push(decoder.decode(value, { stream: true }))) {
       const data = JSON.parse(message.data);
       if (message.event === "error") throw new ApiError(data.status ?? 500, data.code, data.message);
       if (message.event === "done") yield { type: "done", result: data as AskResponse };
