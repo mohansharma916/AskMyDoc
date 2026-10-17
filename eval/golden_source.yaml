@@ -1,0 +1,246 @@
+# Source of eval/golden.jsonl. Each answerable item lists exact evidence quotes
+# from eval/corpus; `python -m eval.build_golden` maps them to supporting chunk ids.
+# Mix: 30 single-fact, 10 multi-chunk, 10 unanswerable.
+
+- id: g_001
+  question: What are the core collaboration hours?
+  expected_answer: 10:00 to 15:00 in each employee's local time zone.
+  evidence: ["Core collaboration hours are 10:00 to 15:00"]
+  tags: [single-fact, handbook]
+- id: g_002
+  question: How many days per week can I work remotely?
+  expected_answer: Up to three days per week.
+  evidence: ["work remotely up to three days per week"]
+  tags: [single-fact, handbook]
+- id: g_003
+  question: How often are fully remote arrangements reviewed?
+  expected_answer: Every six months.
+  evidence: ["Fully remote arrangements are reviewed every six months"]
+  tags: [single-fact, handbook]
+- id: g_004
+  question: Do I need approval to work from another country for six weeks?
+  expected_answer: Yes. Working from another country for more than 30 days in a calendar year needs prior approval from People Operations.
+  evidence: ["more than 30 days in a calendar year need prior approval from People Operations"]
+  tags: [single-fact, handbook]
+- id: g_005
+  question: How many days of paid time off does a full-time employee get per year?
+  expected_answer: 21 days per year (1.75 days per month).
+  evidence: ["which is 21 days per year"]
+  tags: [single-fact, handbook]
+- id: g_006
+  question: How many unused PTO days can be carried over into the next year?
+  expected_answer: Up to 5 days; additional unused days expire on January 31.
+  evidence: ["Up to 5 unused PTO days may be carried over"]
+  tags: [single-fact, handbook]
+- id: g_007
+  question: How far in advance must I request two weeks of PTO?
+  expected_answer: At least three weeks in advance, because the request is longer than five consecutive working days.
+  evidence: ["must be submitted at least three weeks in advance"]
+  tags: [single-fact, handbook]
+- id: g_008
+  question: How many paid sick days do employees get?
+  expected_answer: Up to 10 paid sick days per year, which do not carry over.
+  evidence: ["Employees receive up to 10 paid sick days per year"]
+  tags: [single-fact, handbook]
+- id: g_009
+  question: When is a doctor's note required for sick leave?
+  expected_answer: For absences longer than three consecutive working days.
+  evidence: ["A doctor's note is required for absences longer than three consecutive working days"]
+  tags: [single-fact, handbook]
+- id: g_010
+  question: How long is parental leave for primary caregivers?
+  expected_answer: 20 weeks of fully paid parental leave.
+  evidence: ["Primary caregivers receive 20 weeks of fully paid parental leave"]
+  tags: [single-fact, handbook]
+- id: g_011
+  question: How much bereavement leave is there for an immediate family member?
+  expected_answer: Up to 5 paid days.
+  evidence: ["up to 5 paid days of bereavement leave"]
+  tags: [single-fact, handbook]
+- id: g_012
+  question: What is the resignation notice period for people managers?
+  expected_answer: 60 days for people managers and directors.
+  evidence: ["60 days for people managers and directors"]
+  tags: [single-fact, handbook]
+- id: g_013
+  question: How long is the probation period for new employees?
+  expected_answer: Six months.
+  evidence: ["probation period of six months"]
+  tags: [single-fact, handbook]
+- id: g_014
+  question: When do performance reviews take place?
+  expected_answer: Twice a year, in April and October.
+  evidence: ["Performance reviews happen twice a year, in April and October"]
+  tags: [single-fact, handbook]
+- id: g_015
+  question: Can I accept a gift from a supplier worth 80 USD?
+  expected_answer: No. Supplier gifts worth more than 50 USD must be declined or reported.
+  evidence: ["Gifts from suppliers worth more than 50 USD must be declined or reported"]
+  tags: [single-fact, handbook]
+- id: g_016
+  question: Who has to approve a 500 USD business expense?
+  expected_answer: The employee's manager, before purchase.
+  evidence: ["Expenses between 75 and 1,000 USD require approval from the employee's manager"]
+  tags: [single-fact, travel]
+- id: g_017
+  question: How long do I have to submit expense receipts?
+  expected_answer: 30 days from purchase, in Expensify.
+  evidence: ["Receipts must be submitted in the Expensify tool within 30 days of purchase"]
+  tags: [single-fact, travel]
+- id: g_018
+  question: Who approves business class flights?
+  expected_answer: A vice president, and only for flights longer than ten hours.
+  evidence: ["Business class requires approval from a vice president"]
+  tags: [single-fact, travel]
+- id: g_019
+  question: What is the hotel limit per night in London?
+  expected_answer: 250 USD per night.
+  evidence: ["250 USD in New York, London, Tokyo and Zurich"]
+  tags: [single-fact, travel]
+- id: g_020
+  question: What is the mileage rate for using my own car?
+  expected_answer: 0.55 USD per kilometre.
+  evidence: ["reimbursed at 0.55 USD per kilometre"]
+  tags: [single-fact, travel]
+- id: g_021
+  question: What is the daily meal allowance for international travel?
+  expected_answer: 85 USD per day.
+  evidence: ["International travel | 85 USD"]
+  tags: [single-fact, travel]
+- id: g_022
+  question: What is the minimum password length?
+  expected_answer: 14 characters.
+  evidence: ["Passwords must be at least 14 characters long"]
+  tags: [single-fact, security]
+- id: g_023
+  question: How many hardware security keys does each employee receive?
+  expected_answer: Two, one for daily use and one backup.
+  evidence: ["Each employee receives two hardware security keys"]
+  tags: [single-fact, security]
+- id: g_024
+  question: After how long does the laptop screen lock automatically?
+  expected_answer: After 5 minutes.
+  evidence: ["automatic screen lock after 5 minutes"]
+  tags: [single-fact, security]
+- id: g_025
+  question: How quickly must a suspected security incident be reported?
+  expected_answer: Within one hour of discovery, to security@northwind.example.
+  evidence: ["within one hour of discovery"]
+  tags: [single-fact, security]
+- id: g_026
+  question: How much is the on-call stipend?
+  expected_answer: 400 USD per week of on-call duty.
+  evidence: ["stipend of 400 USD per week of on-call duty"]
+  tags: [single-fact, oncall]
+- id: g_027
+  question: How fast must the primary on-call engineer acknowledge a page?
+  expected_answer: Within 15 minutes.
+  evidence: ["must acknowledge pages within 15 minutes"]
+  tags: [single-fact, oncall]
+- id: g_028
+  question: When is a postmortem draft due?
+  expected_answer: Within five working days of the incident being resolved.
+  evidence: ["The postmortem draft is due within five working days"]
+  tags: [single-fact, oncall]
+- id: g_029
+  question: How much does Northwind match on retirement contributions?
+  expected_answer: Up to 5% of base salary, vesting immediately.
+  evidence: ["matches retirement contributions up to 5% of base salary"]
+  tags: [single-fact, benefits]
+- id: g_030
+  question: How large is the monthly wellness stipend?
+  expected_answer: 60 USD per month.
+  evidence: ["monthly wellness stipend of 60 USD"]
+  tags: [single-fact, benefits]
+
+- id: g_031
+  question: How many paid days off do I get per year for PTO and sick leave combined?
+  expected_answer: 31 days in total, 21 days of PTO plus up to 10 sick days.
+  evidence: ["which is 21 days per year", "Employees receive up to 10 paid sick days per year"]
+  tags: [multi-chunk, handbook]
+- id: g_032
+  question: What equipment and setup money does a new employee get?
+  expected_answer: A laptop of their choice (macOS or Linux) and a one-time 750 USD home-office stipend.
+  evidence: ["receives a laptop of their choice, either macOS or Linux", "one-time home-office stipend of 750 USD"]
+  tags: [multi-chunk, security, benefits]
+- id: g_033
+  question: What happens to unused learning budget and unused PTO at the end of the year?
+  expected_answer: Learning budget does not roll over; up to 5 unused PTO days can be carried over.
+  evidence: ["Unused learning budget does not roll over", "Up to 5 unused PTO days may be carried over"]
+  tags: [multi-chunk, handbook, benefits]
+- id: g_034
+  question: When can a platform engineer join on-call, and how are they paid for it?
+  expected_answer: After three months at Northwind; they get 400 USD per on-call week.
+  evidence: ["once they have been at Northwind for three months", "stipend of 400 USD per week of on-call duty"]
+  tags: [multi-chunk, oncall]
+- id: g_035
+  question: For an 11-hour flight to Tokyo, what flight class and hotel budget apply?
+  expected_answer: Business class is possible with vice-president approval (flight over ten hours); the Tokyo hotel limit is 250 USD per night.
+  evidence: ["only allowed for flights longer than ten hours", "250 USD in New York, London, Tokyo and Zurich"]
+  tags: [multi-chunk, travel]
+- id: g_036
+  question: What notice do I give if I resign during probation versus after it, as an individual contributor?
+  expected_answer: Two weeks during probation, 30 days after probation.
+  evidence: ["During probation the notice period is two weeks", "30 days for individual contributors"]
+  tags: [multi-chunk, handbook]
+- id: g_037
+  question: What do health and dental cover include?
+  expected_answer: Northwind pays 100% of the employee health premium (75% for dependants); dental includes two check-ups per year.
+  evidence: ["pays 100% of the health insurance premium for employees", "Dental cover includes two check-ups per year"]
+  tags: [multi-chunk, benefits]
+- id: g_038
+  question: Who can get a corporate card, and how soon must receipts be submitted?
+  expected_answer: Employees travelling more than four times a year; receipts are due within 30 days of purchase.
+  evidence: ["travel more than four times a year can request a corporate card", "within 30 days of purchase"]
+  tags: [multi-chunk, travel]
+- id: g_039
+  question: How many paid volunteering days and paid learning days do I get per year?
+  expected_answer: 2 volunteering days and 3 learning days.
+  evidence: ["up to 2 paid volunteering days per year", "up to 3 paid learning days per year"]
+  tags: [multi-chunk, handbook, benefits]
+- id: g_040
+  question: When are the offices open, and is there support for commuting costs?
+  expected_answer: 07:00 to 21:00 on working days; office-based employees get a 100 USD monthly commuter allowance.
+  evidence: ["open from 07:00 to 21:00 on working days", "commuter allowance of 100 USD per month"]
+  tags: [multi-chunk, handbook, benefits]
+
+- id: g_041
+  question: What is the CEO's salary?
+  answerable: false
+  tags: [unanswerable]
+- id: g_042
+  question: How many stock options do new hires receive?
+  answerable: false
+  tags: [unanswerable]
+- id: g_043
+  question: What is the office dress code?
+  answerable: false
+  tags: [unanswerable]
+- id: g_044
+  question: Can I bring my dog to the office?
+  answerable: false
+  tags: [unanswerable]
+- id: g_045
+  question: How large is the relocation bonus for new employees?
+  answerable: false
+  tags: [unanswerable]
+- id: g_046
+  question: Is there a paid sabbatical after five years?
+  answerable: false
+  tags: [unanswerable]
+- id: g_047
+  question: Is lunch provided free in the office?
+  answerable: false
+  tags: [unanswerable]
+- id: g_048
+  question: Which company provides the retirement plan?
+  answerable: false
+  tags: [unanswerable, near-miss]
+- id: g_049
+  question: What is the office Wi-Fi password?
+  answerable: false
+  tags: [unanswerable]
+- id: g_050
+  question: What is the overtime pay rate for hours beyond 40 per week?
+  answerable: false
+  tags: [unanswerable, near-miss]

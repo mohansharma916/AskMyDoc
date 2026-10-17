@@ -33,13 +33,16 @@ dev = [
 where = ["src"]
 
 [tool.ruff]
-line-length = 110
+line-length = 120
 target-version = "py311"
 src = ["src", "tests", "eval"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "SIM"]
 ignore = ["SIM905"]  # allow "a b c".split() word lists
+
+[tool.ruff.lint.isort]
+known-first-party = ["askdocs", "eval"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

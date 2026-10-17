@@ -3,9 +3,7 @@ from .types import Candidate
 RRF_K = 60
 
 
-def reciprocal_rank_fusion(
-    ranked_lists: list[list[Candidate]], k: int = RRF_K, top_n: int = 20
-) -> list[Candidate]:
+def reciprocal_rank_fusion(ranked_lists: list[list[Candidate]], k: int = RRF_K, top_n: int = 20) -> list[Candidate]:
     """Fuse rankings by score = sum(1 / (k + rank)), rank starting at 1.
 
     Scores from each list (bm25, vector, ...) are merged onto one Candidate per
