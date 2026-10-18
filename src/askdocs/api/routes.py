@@ -7,8 +7,9 @@ from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
 
+from ..config import Settings
 from ..ingest.parsers import SUPPORTED_EXTENSIONS
-from ..services import Services
+from ..services import RUNTIME_KEYS, Services
 from ..store.models import Chunk, Document, Feedback, Trace
 from .errors import APIError, classify, error_body
 from .jobs import JobStore
@@ -23,9 +24,12 @@ from .schemas import (
     HealthResponse,
     IngestJob,
     LLMStatus,
+    RuntimeSettings,
+    SettingsResponse,
+    SettingsUpdate,
 )
 
-ERRORS = {code: {"model": ErrorResponse} for code in (400, 404, 413, 429, 500, 504)}
+ERRORS = {code: {"model": ErrorResponse} for code in (400, 403, 404, 413, 429, 500, 504)}
 
 router = APIRouter(prefix="/api/v1", responses=ERRORS)
 
@@ -175,6 +179,62 @@ def ask_stream(body: AskRequest, request: Request) -> StreamingResponse:
 
     headers = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
     return StreamingResponse(events(), media_type="text/event-stream", headers=headers)
+
+
+# --- Developer settings -------------------------------------------------------
+
+
+def _runtime(s: Settings) -> RuntimeSettings:
+    values = {k: getattr(s, k) for k in RUNTIME_KEYS - {"llm_api_key"}}
+    return RuntimeSettings(**values, llm_api_key_set=bool(s.llm_api_key))
+
+
+def _settings_response(svc: Services) -> SettingsResponse:
+    s = svc.settings
+    return SettingsResponse(
+        editable=s.dev_settings_enabled,
+        settings=_runtime(s),
+        defaults=_runtime(svc.initial_settings),
+        restart_required={
+            "embed_model": s.embed_model,
+            "qdrant_url": s.qdrant_url,
+            "qdrant_collection": s.qdrant_collection,
+            "cors_origins": s.cors_origins,
+            "tracing_enabled": s.tracing_enabled,
+            "otel_endpoint": s.otel_endpoint,
+        },
+        prompt_versions=sorted(p.stem for p in s.prompts_dir.glob("*.txt")),
+    )
+
+
+def _configure(svc: Services, changes: dict) -> None:
+    if not svc.settings.dev_settings_enabled:
+        raise APIError(403, "forbidden", "Developer settings are disabled (DEV_SETTINGS_ENABLED=false).")
+    try:
+        svc.configure(**changes)
+    except (ValueError, FileNotFoundError) as exc:
+        raise APIError(400, "invalid_request", str(exc)) from exc
+
+
+@router.get("/settings", response_model=SettingsResponse, tags=["system"])
+def get_settings(request: Request) -> SettingsResponse:
+    return _settings_response(services(request))
+
+
+@router.patch("/settings", response_model=SettingsResponse, tags=["system"])
+def update_settings(body: SettingsUpdate, request: Request) -> SettingsResponse:
+    """Change runtime settings in memory; they last until the server restarts."""
+    svc = services(request)
+    _configure(svc, body.model_dump(exclude_none=True))
+    return _settings_response(svc)
+
+
+@router.post("/settings/reset", response_model=SettingsResponse, tags=["system"])
+def reset_settings(request: Request) -> SettingsResponse:
+    """Restore the settings the server started with."""
+    svc = services(request)
+    _configure(svc, {k: getattr(svc.initial_settings, k) for k in RUNTIME_KEYS})
+    return _settings_response(svc)
 
 
 # --- Feedback -----------------------------------------------------------------

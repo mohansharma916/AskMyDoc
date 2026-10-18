@@ -200,3 +200,56 @@ def test_warm_up_loads_models_and_survives_failures(make_services, caplog):
     services.__dict__["reranker"] = None  # broken reranker
     warm_up(services)
     assert "warm-up failed" in caplog.text
+
+
+def test_settings_get_hides_api_key(client):
+    client.services.configure(llm_api_key="sk-secret")
+    body = client.get("/api/v1/settings").json()
+    assert body["editable"] is True
+    assert body["settings"]["llm_api_key_set"] is True and "sk-secret" not in str(body)
+    assert body["settings"]["rerank_k"] == 5 and body["defaults"]["llm_api_key_set"] is False
+    assert "embed_model" in body["restart_required"]
+    assert "answer_v1" in body["prompt_versions"]
+
+
+def test_settings_patch_rebuilds_dependents(client):
+    pipeline, llm, indexer = client.services.pipeline, client.services.llm, client.services.indexer
+    r = client.patch("/api/v1/settings", json={"rerank_k": 2, "abstain_threshold": 0.0})
+    assert r.status_code == 200 and r.json()["settings"]["rerank_k"] == 2
+    assert client.services.pipeline is not pipeline and client.services.pipeline.rerank_k == 2
+    assert client.services.llm is llm and client.services.indexer is indexer  # untouched
+
+    client.patch("/api/v1/settings", json={"chunk_size": 256, "chunk_overlap": 32})
+    assert client.services.indexer is not indexer and client.services.indexer.chunk_size == 256
+
+
+def test_settings_patch_uses_new_rerank_k_for_ask(client):
+    client.patch("/api/v1/settings", json={"rerank_k": 1, "abstain_threshold": 0.0})
+    r = client.post("/api/v1/ask", json={"question": "How many weeks of parental leave?"})
+    assert r.status_code == 200
+    content = client.services.llm.calls[0][0]["content"]
+    assert "[1]" in content and "[2]" not in content  # one excerpt
+
+
+def test_settings_patch_rejects_bad_values(client):
+    def err(body):
+        r = client.patch("/api/v1/settings", json=body)
+        return r.status_code, r.json()["error"]["message"]
+
+    assert err({"embed_model": "x"})[0] == 400  # restart-only
+    assert err({"retrieve_k": 0})[0] == 400
+    assert err({"prompt_version": "../secret"})[0] == 400
+    assert "not found" in err({"prompt_version": "missing_v9"})[1]
+    assert "chunk_overlap" in err({"chunk_overlap": 600})[1]
+    assert "rerank_k" in err({"rerank_k": 20, "retrieve_k": 10})[1]
+    assert client.get("/api/v1/settings").json()["settings"]["retrieve_k"] == 20  # unchanged
+
+
+def test_settings_reset_and_disabled(client):
+    client.patch("/api/v1/settings", json={"retrieve_k": 7})
+    body = client.post("/api/v1/settings/reset").json()
+    assert body["settings"] == body["defaults"]
+
+    client.services.settings = client.services.settings.model_copy(update={"dev_settings_enabled": False})
+    r = client.patch("/api/v1/settings", json={"retrieve_k": 7})
+    assert r.status_code == 403 and r.json()["error"]["code"] == "forbidden"
