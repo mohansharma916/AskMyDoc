@@ -1,5 +1,4 @@
 import json
-import os
 from pathlib import Path
 from typing import Annotated
 
@@ -7,7 +6,7 @@ from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
 
-from ..config import Settings
+from ..config import API_KEY_FIELDS, Settings
 from ..ingest.parsers import SUPPORTED_EXTENSIONS
 from ..services import RUNTIME_KEYS, Services
 from ..store.models import Chunk, Document, Feedback, Trace
@@ -56,7 +55,7 @@ def health(request: Request) -> HealthResponse:
         with svc.db.session() as session:
             documents = session.scalar(select(func.count()).select_from(Document))
             chunks = session.scalar(select(func.count()).select_from(Chunk))
-    configured = s.llm_provider != "anthropic" or bool(s.llm_api_key or os.getenv("ANTHROPIC_API_KEY"))
+    configured = s.llm_configured()
     return HealthResponse(
         status="ok" if database and qdrant and configured else "degraded",
         database=database,
@@ -185,8 +184,8 @@ def ask_stream(body: AskRequest, request: Request) -> StreamingResponse:
 
 
 def _runtime(s: Settings) -> RuntimeSettings:
-    values = {k: getattr(s, k) for k in RUNTIME_KEYS - {"llm_api_key"}}
-    return RuntimeSettings(**values, llm_api_key_set=bool(s.llm_api_key))
+    values = {k: getattr(s, k) for k in RUNTIME_KEYS - set(API_KEY_FIELDS.values())}
+    return RuntimeSettings(**values, api_keys_set={p: bool(s.provider_api_key(p)) for p in API_KEY_FIELDS})
 
 
 def _settings_response(svc: Services) -> SettingsResponse:

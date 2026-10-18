@@ -206,8 +206,9 @@ def test_settings_get_hides_api_key(client):
     client.services.configure(llm_api_key="sk-secret")
     body = client.get("/api/v1/settings").json()
     assert body["editable"] is True
-    assert body["settings"]["llm_api_key_set"] is True and "sk-secret" not in str(body)
-    assert body["settings"]["rerank_k"] == 5 and body["defaults"]["llm_api_key_set"] is False
+    assert body["settings"]["api_keys_set"] == {"anthropic": True, "openai": False, "groq": False}
+    assert "sk-secret" not in str(body)
+    assert body["settings"]["rerank_k"] == 5 and body["defaults"]["api_keys_set"]["anthropic"] is False
     assert "embed_model" in body["restart_required"]
     assert "answer_v1" in body["prompt_versions"]
 
@@ -253,3 +254,20 @@ def test_settings_reset_and_disabled(client):
     client.services.settings = client.services.settings.model_copy(update={"dev_settings_enabled": False})
     r = client.patch("/api/v1/settings", json={"retrieve_k": 7})
     assert r.status_code == 403 and r.json()["error"]["code"] == "forbidden"
+
+
+def test_settings_switch_to_groq_uses_groq_key_only(client):
+    client.services.configure(llm_api_key="sk-ant", groq_api_key="")  # ignore any GROQ_API_KEY in the shell
+    r = client.patch("/api/v1/settings", json={"llm_provider": "groq", "llm_model": "llama-3.3-70b-versatile"})
+    assert r.status_code == 200
+    llm = client.services.llm
+    assert llm.provider == "Groq" and "Authorization" not in llm._http.headers  # Anthropic key never sent
+    assert client.get("/api/v1/health").json()["llm"] == {
+        "provider": "groq",
+        "model": "llama-3.3-70b-versatile",
+        "configured": False,
+    }
+
+    client.patch("/api/v1/settings", json={"groq_api_key": "gsk-test"})
+    assert client.services.llm._http.headers["Authorization"] == "Bearer gsk-test"
+    assert client.get("/api/v1/settings").json()["settings"]["api_keys_set"]["groq"] is True

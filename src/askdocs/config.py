@@ -1,9 +1,13 @@
+import os
 from functools import lru_cache
 from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+# Setting that holds each provider's API key; keys are write-only in the settings API.
+API_KEY_FIELDS = {"anthropic": "llm_api_key", "openai": "openai_api_key", "groq": "groq_api_key"}
 
 
 class Settings(BaseSettings):
@@ -35,9 +39,12 @@ class Settings(BaseSettings):
     chunk_overlap: int = 64
 
     # LLM
-    llm_provider: str = "anthropic"  # anthropic | ollama
+    llm_provider: str = "anthropic"  # anthropic | openai | groq | ollama
     llm_model: str = "claude-opus-5-5"
-    llm_api_key: str = ""  # falls back to ANTHROPIC_API_KEY when empty
+    llm_api_key: str = ""  # Anthropic key (also the eval judge's); falls back to ANTHROPIC_API_KEY when empty
+    openai_api_key: str = ""
+    openai_base_url: str = "https://api.openai.com/v1"  # or any OpenAI-compatible server
+    groq_api_key: str = ""
     llm_effort: str = "low"
     llm_temperature: float = 0.1  # sent only to providers that accept it (Ollama)
     llm_timeout_s: float = 30.0
@@ -51,6 +58,16 @@ class Settings(BaseSettings):
     retrieve_k: int = 20
     rerank_k: int = 5
     abstain_threshold: float = 0.03  # min best rerank score; tuned with python -m eval.tune_threshold
+
+    def provider_api_key(self, provider: str | None = None) -> str:
+        """The key for one provider (default: LLM_PROVIDER), so keys never cross providers."""
+        field = API_KEY_FIELDS.get(provider or self.llm_provider)
+        return getattr(self, field) if field else ""
+
+    def llm_configured(self) -> bool:
+        if self.llm_provider == "ollama":
+            return True
+        return bool(self.provider_api_key() or (self.llm_provider == "anthropic" and os.getenv("ANTHROPIC_API_KEY")))
 
 
 @lru_cache

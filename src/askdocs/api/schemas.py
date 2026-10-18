@@ -141,7 +141,7 @@ class HealthResponse(BaseModel):
 
 # --- Developer settings -------------------------------------------------------
 
-LLMProvider = Literal["anthropic", "ollama"]
+LLMProvider = Literal["anthropic", "openai", "groq", "ollama"]
 LLMEffort = Literal["low", "medium", "high", "xhigh", "max"]
 
 
@@ -150,11 +150,12 @@ class RuntimeSettings(BaseModel):
 
     llm_provider: LLMProvider
     llm_model: str
-    llm_api_key_set: bool  # the key itself is write-only
+    api_keys_set: dict[str, bool]  # per provider; the keys themselves are write-only
     llm_effort: LLMEffort
     llm_temperature: float
     llm_timeout_s: float
     ollama_url: str
+    openai_base_url: str
     rerank_model: str
     prompt_version: str
     chunk_size: int
@@ -166,17 +167,20 @@ class RuntimeSettings(BaseModel):
 
 
 class SettingsUpdate(BaseModel):
-    """Partial update; omitted fields keep their value. An empty llm_api_key clears it."""
+    """Partial update; omitted fields keep their value. An empty API key clears it."""
 
     model_config = ConfigDict(extra="forbid")
 
     llm_provider: LLMProvider | None = None
     llm_model: str | None = Field(None, min_length=1, max_length=200)
-    llm_api_key: str | None = Field(None, max_length=500)
+    llm_api_key: str | None = Field(None, max_length=500)  # Anthropic
+    openai_api_key: str | None = Field(None, max_length=500)
+    groq_api_key: str | None = Field(None, max_length=500)
     llm_effort: LLMEffort | None = None
     llm_temperature: float | None = Field(None, ge=0, le=2)
     llm_timeout_s: float | None = Field(None, gt=0, le=600)
     ollama_url: str | None = Field(None, pattern=r"^https?://\S+$", max_length=500)
+    openai_base_url: str | None = Field(None, pattern=r"^https?://\S+$", max_length=500)
     rerank_model: str | None = Field(None, min_length=1, max_length=200)
     prompt_version: str | None = Field(None, pattern=r"^[\w.-]+$", max_length=100)
     chunk_size: int | None = Field(None, ge=64, le=4096)

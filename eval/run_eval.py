@@ -34,7 +34,7 @@ REPORT_MD = EVAL_DIR / "report.md"
 
 
 def has_llm_credentials(settings) -> bool:
-    return settings.llm_provider != "anthropic" or bool(settings.llm_api_key or os.getenv("ANTHROPIC_API_KEY"))
+    return settings.llm_configured()
 
 
 def run_pipeline(services, items: list[dict], options: PipelineOptions | None = None) -> list[dict]:
