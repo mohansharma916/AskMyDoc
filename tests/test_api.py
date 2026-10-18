@@ -34,6 +34,12 @@ def test_upload_ingest_job_and_documents(client):
     docs = client.get("/api/v1/documents").json()["documents"]
     assert [d["doc_id"] for d in docs] == ["it", "leave", "travel"]
     assert docs[1]["chunks"] == 2 and docs[1]["title"] == "Leave"
+    assert docs[0]["source_type"] == "preloaded"
+    assert docs[2]["source_type"] == "user_upload"
+
+    detail = client.get("/api/v1/documents/travel").json()
+    assert detail["doc_id"] == "travel" and detail["source_type"] == "user_upload"
+    assert len(detail["chunks"]) == 1 and "Book economy." in detail["chunks"][0]["text"]
 
 
 def test_ingest_path_under_root(client, tmp_path):

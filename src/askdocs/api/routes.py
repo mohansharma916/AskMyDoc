@@ -15,6 +15,8 @@ from .jobs import JobStore
 from .schemas import (
     AskRequest,
     AskResponse,
+    ChunkOut,
+    DocumentDetail,
     DocumentList,
     DocumentOut,
     ErrorResponse,
@@ -121,11 +123,45 @@ def documents(request: Request) -> DocumentList:
     return DocumentList(
         documents=[
             DocumentOut(
-                doc_id=d.doc_id, file_name=d.file_name, title=d.title, chunks=len(d.chunks), ingested_at=d.ingested_at
+                doc_id=d.doc_id,
+                file_name=d.file_name,
+                title=d.title,
+                chunks=len(d.chunks),
+                ingested_at=d.ingested_at,
+                source_type="user_upload" if (d.source_uri or "").startswith("upload://") else "preloaded",
             )
             for d in docs
         ]
     )
+
+
+@router.get("/documents/{doc_id}", response_model=DocumentDetail, tags=["documents"])
+def get_document(doc_id: str, request: Request) -> DocumentDetail:
+    with services(request).db.session() as s:
+        d = s.get(Document, doc_id)
+        if d is None:
+            raise APIError(404, "not_found", f"Unknown doc_id '{doc_id}'.")
+        chunks = [
+            ChunkOut(
+                chunk_id=c.chunk_id,
+                page=c.page,
+                section_path=c.section_path or [],
+                text=c.text,
+                token_count=c.token_count,
+                position=c.position,
+            )
+            for c in d.chunks
+        ]
+        return DocumentDetail(
+            doc_id=d.doc_id,
+            file_name=d.file_name,
+            title=d.title,
+            source_uri=d.source_uri or "",
+            source_type="user_upload" if (d.source_uri or "").startswith("upload://") else "preloaded",
+            chunks=chunks,
+            chunk_count=len(chunks),
+            ingested_at=d.ingested_at,
+        )
 
 
 @router.delete("/documents/{doc_id}", status_code=204, tags=["documents"])

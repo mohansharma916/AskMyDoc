@@ -25,7 +25,7 @@ export function highlight(snippet: string, sentences: string[]): ReactNode[] {
   if (!terms.size) return [snippet];
   return snippet.split(/([\p{L}\p{N}][\p{L}\p{N}.,%-]*[\p{L}\p{N}%]|\p{N})/u).map((part, i) =>
     terms.has(part.toLowerCase()) ? (
-      <mark key={i} className="rounded bg-amber-200/70 px-0.5 text-inherit dark:bg-amber-500/30">
+      <mark key={i} className="rounded bg-amber-200/80 px-0.5 text-inherit dark:bg-amber-500/30">
         {part}
       </mark>
     ) : (
@@ -39,13 +39,18 @@ interface Props {
   active: number | null;
   answer: string;
   onSelect: (n: number) => void;
+  onViewDoc?: (docId: string) => void;
 }
 
-export default function CitationPanel({ citations, active, answer, onSelect }: Props) {
+export default function CitationPanel({ citations, active, answer, onSelect, onViewDoc }: Props) {
   if (!citations.length) return null;
   return (
     <aside aria-label="Sources" className="flex flex-col gap-3">
-      <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Sources</h2>
+      <div className="flex items-center justify-between">
+        <h2 className="text-[11px] font-semibold uppercase tracking-wider text-stone-500 dark:text-stone-400">
+          Sources ({citations.length})
+        </h2>
+      </div>
       <ol className="flex flex-col gap-2">
         {citations.map((c) => {
           const selected = c.n === active;
@@ -55,31 +60,44 @@ export default function CitationPanel({ citations, active, answer, onSelect }: P
                 type="button"
                 onClick={() => onSelect(c.n)}
                 aria-current={selected}
-                className={`w-full rounded-lg border p-3 text-left transition ${
+                className={`w-full rounded-xl border p-3 text-left transition-all ${
                   selected
-                    ? "border-indigo-500 bg-indigo-50 shadow-sm dark:bg-indigo-950/40"
-                    : "border-slate-200 bg-white hover:border-indigo-300 dark:border-slate-800 dark:bg-slate-900"
+                    ? "border-amber-600 bg-amber-50/60 shadow-xs dark:border-amber-500/70 dark:bg-amber-950/20"
+                    : "border-stone-200 bg-white hover:border-stone-300 dark:border-stone-800 dark:bg-stone-900"
                 }`}
               >
                 <div className="flex items-baseline gap-2">
-                  <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-indigo-600 px-1.5 text-[11px] font-semibold text-white">
+                  <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-600 px-1.5 text-[11px] font-semibold text-white">
                     {c.n}
                   </span>
-                  <span className="min-w-0 flex-1 truncate text-sm font-medium" title={c.file_name}>
+                  <span className="min-w-0 flex-1 truncate text-xs font-semibold text-stone-800 dark:text-stone-200" title={c.file_name}>
                     {c.file_name}
                   </span>
-                  {c.page !== null && <span className="shrink-0 text-xs text-slate-500">p. {c.page}</span>}
+                  {c.page !== null && <span className="shrink-0 font-mono text-[11px] text-stone-400">p. {c.page}</span>}
                 </div>
                 {c.section_path.length > 0 && (
-                  <p className="mt-1 truncate text-xs text-slate-500">{c.section_path.join(" › ")}</p>
+                  <p className="mt-1 truncate text-xs text-stone-500 dark:text-stone-400">{c.section_path.join(" › ")}</p>
                 )}
                 <p
-                  className={`mt-2 whitespace-pre-line text-sm text-slate-700 dark:text-slate-300 ${
+                  className={`mt-2 whitespace-pre-line text-xs leading-relaxed text-stone-700 dark:text-stone-300 ${
                     selected ? "" : "line-clamp-3"
                   }`}
                 >
                   {selected ? highlight(c.snippet, sentencesCiting(answer, c.n)) : c.snippet}
                 </p>
+                {onViewDoc && (
+                  <div className="mt-2.5 pt-2 border-t border-stone-100 flex justify-end dark:border-stone-800">
+                    <span
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onViewDoc(c.doc_id);
+                      }}
+                      className="text-[11px] font-medium text-amber-600 hover:text-amber-700 hover:underline dark:text-amber-500"
+                    >
+                      Inspect full document →
+                    </span>
+                  </div>
+                )}
               </button>
             </li>
           );

@@ -34,6 +34,27 @@ export interface DocumentInfo {
   title: string;
   chunks: number;
   ingested_at: string;
+  source_type?: "preloaded" | "user_upload";
+}
+
+export interface ChunkDetail {
+  chunk_id: string;
+  page: number | null;
+  section_path: string[];
+  text: string;
+  token_count: number;
+  position: number;
+}
+
+export interface DocumentDetail {
+  doc_id: string;
+  file_name: string;
+  title: string;
+  source_uri: string;
+  source_type: "preloaded" | "user_upload";
+  chunks: ChunkDetail[];
+  chunk_count: number;
+  ingested_at: string;
 }
 
 export interface IngestJob {
@@ -124,6 +145,7 @@ const json = (method: string, data: unknown): RequestInit => ({
 export const api = {
   health: () => request<Health>("/health"),
   documents: () => request<{ documents: DocumentInfo[] }>("/documents").then((r) => r.documents),
+  documentDetail: (docId: string) => request<DocumentDetail>(`/documents/${encodeURIComponent(docId)}`),
   deleteDocument: (docId: string) => request<void>(`/documents/${encodeURIComponent(docId)}`, { method: "DELETE" }),
   ingest: (files: File[]) => {
     const form = new FormData();
