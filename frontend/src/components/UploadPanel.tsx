@@ -146,6 +146,15 @@ export default function UploadPanel({ onSelectDocument, activeDocId }: Props) {
               {userUploads.map((d) => (
                 <li
                   key={d.doc_id}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`View document ${d.title}`}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      onSelectDocument?.(d.doc_id);
+                    }
+                  }}
                   className={`group flex items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-sm transition cursor-pointer ${
                     activeDocId === d.doc_id
                       ? "bg-indigo-50 text-indigo-950 border border-indigo-200 dark:bg-slate-800 dark:text-slate-100 dark:border-slate-700"
@@ -166,11 +175,12 @@ export default function UploadPanel({ onSelectDocument, activeDocId }: Props) {
                     <button
                       type="button"
                       aria-label={`Remove ${d.file_name}`}
+                      title={`Remove ${d.file_name}`}
                       onClick={(e) => {
                         e.stopPropagation();
                         remove.mutate(d.doc_id);
                       }}
-                      className="rounded p-1 text-slate-400 opacity-0 hover:bg-red-50 hover:text-red-600 focus:opacity-100 group-hover:opacity-100 transition"
+                      className="rounded p-1 text-slate-400 opacity-60 hover:bg-red-50 hover:text-red-600 focus:opacity-100 group-hover:opacity-100 transition"
                     >
                       <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
                         <path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" />
@@ -196,6 +206,15 @@ export default function UploadPanel({ onSelectDocument, activeDocId }: Props) {
               {preloadedDocs.map((d) => (
                 <li
                   key={d.doc_id}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`View document ${d.title}`}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      onSelectDocument?.(d.doc_id);
+                    }
+                  }}
                   className={`group flex items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-sm transition cursor-pointer ${
                     activeDocId === d.doc_id
                       ? "bg-indigo-50 text-indigo-950 border border-indigo-200 dark:bg-slate-800 dark:text-slate-100 dark:border-slate-700"

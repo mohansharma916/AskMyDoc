@@ -163,7 +163,7 @@ function SettingsForm({ info, onClose }: { info: SettingsInfo; onClose: () => vo
             </button>
           </div>
         </div>
-        <p className="mt-2 text-[11px] text-slate-400">Changes live in server memory and reset when the API restarts.</p>
+        <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">Changes live in server memory and reset when the API restarts.</p>
       </footer>
     </form>
   );
@@ -176,7 +176,31 @@ export default function DeveloperSettings({ open, onClose }: { open: boolean; on
   useEffect(() => {
     if (!open) return;
     panel.current?.focus();
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose();
+        return;
+      }
+      if (e.key === "Tab" && panel.current) {
+        const focusable = panel.current.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        );
+        if (!focusable.length) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (e.shiftKey) {
+          if (document.activeElement === first) {
+            e.preventDefault();
+            last.focus();
+          }
+        } else {
+          if (document.activeElement === last) {
+            e.preventDefault();
+            first.focus();
+          }
+        }
+      }
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
@@ -195,16 +219,18 @@ export default function DeveloperSettings({ open, onClose }: { open: boolean; on
         className="relative flex h-full w-full max-w-md flex-col border-l border-slate-200 bg-white shadow-xl outline-none dark:border-slate-800 dark:bg-slate-900"
       >
         <header className="flex items-center justify-between border-b border-slate-200 px-5 py-3 dark:border-slate-800">
-          <h2 id="dev-settings-title" className="font-semibold">
+          <h2 id="dev-settings-title" className="font-semibold text-slate-900 dark:text-slate-100">
             Developer settings
           </h2>
           <button
             type="button"
             aria-label="Close developer settings"
             onClick={onClose}
-            className="rounded px-2 text-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800"
+            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition"
           >
-            ×
+            <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+              <path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" />
+            </svg>
           </button>
         </header>
         {settings.isPending && <p className="p-5 text-sm text-slate-500">Loading settings…</p>}

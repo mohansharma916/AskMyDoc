@@ -39,6 +39,13 @@ export default function App() {
   const [rightPanelTab, setRightPanelTab] = useState<"doc" | "citations">("citations");
   const [previewDocId, setPreviewDocId] = useState<string | null>(null);
   const [activeCitation, setActiveCitation] = useState<number | null>(null);
+  const [confirmDeleteChatId, setConfirmDeleteChatId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!confirmDeleteChatId) return;
+    const timer = setTimeout(() => setConfirmDeleteChatId(null), 3000);
+    return () => clearTimeout(timer);
+  }, [confirmDeleteChatId]);
 
   const [heroDragging, setHeroDragging] = useState(false);
   const heroFileInput = useRef<HTMLInputElement>(null);
@@ -272,15 +279,29 @@ export default function App() {
                     <button
                       type="button"
                       aria-label="Delete chat"
+                      title={confirmDeleteChatId === s.id ? "Click to confirm deletion" : `Delete chat ${s.title}`}
                       onClick={(e) => {
                         e.stopPropagation();
-                        deleteChat(s.id);
+                        if (confirmDeleteChatId === s.id) {
+                          deleteChat(s.id);
+                          setConfirmDeleteChatId(null);
+                        } else {
+                          setConfirmDeleteChatId(s.id);
+                        }
                       }}
-                      className="rounded p-1 text-slate-400 opacity-0 hover:text-red-600 focus:opacity-100 group-hover:opacity-100 transition"
+                      className={`rounded px-1.5 py-0.5 text-[11px] transition ${
+                        confirmDeleteChatId === s.id
+                          ? "bg-red-600 text-white font-semibold opacity-100"
+                          : "text-slate-400 opacity-60 hover:bg-red-50 hover:text-red-600 focus:opacity-100 group-hover:opacity-100 dark:hover:bg-red-950/40"
+                      }`}
                     >
-                      <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
-                        <path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" />
-                      </svg>
+                      {confirmDeleteChatId === s.id ? (
+                        "Delete?"
+                      ) : (
+                        <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+                          <path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" />
+                        </svg>
+                      )}
                     </button>
                   </div>
                 );
@@ -324,14 +345,14 @@ export default function App() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h7" />
               </svg>
             </button>
-            <h1 className="text-sm font-semibold truncate max-w-[200px] sm:max-w-md">
+            <h1 className="text-sm font-semibold truncate max-w-[140px] sm:max-w-md">
               {activeSession?.title || "Ask My Docs"}
             </h1>
           </div>
 
           <div className="flex items-center gap-3">
             {/* System Status */}
-            <span className="hidden items-center gap-2 text-xs text-slate-500 sm:flex">
+            <span className="hidden items-center gap-2 text-xs text-slate-500 md:flex">
               <span
                 aria-hidden
                 className={`h-2 w-2 rounded-full ${
@@ -347,6 +368,7 @@ export default function App() {
             <button
               type="button"
               aria-label="Toggle inspector panel"
+              aria-expanded={rightPanelOpen}
               onClick={() => setRightPanelOpen((v) => !v)}
               className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-semibold transition ${
                 rightPanelOpen
@@ -374,7 +396,7 @@ export default function App() {
           <main className="relative flex flex-1 flex-col overflow-hidden">
             {/* Scrollable Conversation Content */}
             <div className="flex-1 overflow-y-auto">
-              <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col p-4 sm:p-6 pb-36">
+              <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col p-4 sm:p-6 pb-44">
               {/* Empty state */}
               {activeSession?.turns.length === 0 && !streaming && (
                 <div className="my-auto flex flex-col items-center justify-center py-8 text-center">
@@ -474,7 +496,7 @@ export default function App() {
                           <div className="absolute inset-0 flex items-center">
                             <div className="w-full border-t border-slate-200 dark:border-slate-800" />
                           </div>
-                          <span className="relative bg-slate-50 px-3 text-[11px] font-medium uppercase tracking-wider text-slate-400 dark:bg-slate-950">
+                          <span className="relative bg-slate-50 px-3 text-[11px] font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400 dark:bg-slate-950">
                             Or ask about pre-loaded policies
                           </span>
                         </div>
@@ -571,7 +593,7 @@ export default function App() {
                         )}
                         {turnStreaming && !turn.answer && (
                           <div className="flex items-center gap-2 py-2 text-sm text-slate-500">
-                            <span className="h-2 w-2 rounded-full bg-indigo-600 animate-ping" />
+                            <span className="h-2 w-2 rounded-full bg-indigo-600 animate-ping motion-reduce:animate-none" />
                             <span>Searching and synthesizing verified sources…</span>
                           </div>
                         )}
@@ -634,7 +656,7 @@ export default function App() {
           {/* Right Inspector Panel (PDF Viewer / Document Viewer & Citations) */}
           <aside
             className={`flex flex-col border-l border-slate-200 bg-white transition-all duration-200 dark:border-slate-800 dark:bg-slate-900 ${
-              rightPanelOpen ? "w-80 lg:w-[480px]" : "w-0 overflow-hidden"
+              rightPanelOpen ? "fixed inset-0 z-30 w-full sm:static sm:w-80 lg:w-[480px]" : "w-0 overflow-hidden"
             }`}
           >
             {/* Panel Mode Switcher Tabs */}
