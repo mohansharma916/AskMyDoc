@@ -92,6 +92,41 @@ it("shows the expiry dialog at zero and starts a clean session", async () => {
   expect(sessionStorage.getItem("askdocs_browser_sessions")).toBeNull();
 });
 
+it("ignores a late expired reply about a session it already replaced", async () => {
+  // Regression: a stale 410 for the old session reopened the dialog right after "Start a new session".
+  let created = 0;
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => (release = resolve));
+  mockFetch({
+    "/sessions/current": session("s-1", 0),
+    "/sessions": () => session(`s-${++created}`, created === 1 ? 1 : 300),
+    "/documents": { documents: [] },
+  });
+  const mocked = globalThis.fetch;
+  vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+    if (!String(input).endsWith("/health")) return mocked(input, init);
+    await held; // the old session's reply arrives only after the new session started
+    return new Response(JSON.stringify({ error: { code: "session_expired", message: "gone" } }), { status: 410 });
+  });
+  renderWithQuery(app);
+  await screen.findByRole("alertdialog", {}, { timeout: 3000 });
+  const late = api.health().catch(() => {}); // sent with the old session id
+
+  await userEvent.click(screen.getByRole("button", { name: "Start a new session" }));
+  await waitFor(() => expect(localStorage.getItem("askdocs_session_id")).toBe("s-2"));
+  release();
+  await late;
+  await new Promise((r) => setTimeout(r, 50));
+  expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+});
+
+it("never lets the browser cache API responses", async () => {
+  const fetch = mockFetch({ "/sessions": session("s-1"), "/documents": { documents: [] } });
+  renderWithQuery(app);
+  await screen.findByText("0 docs");
+  expect(fetch.mock.calls.every(([, init]) => init?.cache === "no-store")).toBe(true);
+});
+
 it("sends a heartbeat on user activity", async () => {
   const fetch = mockFetch({
     "/sessions/current/heartbeat": session("s-1", 300),

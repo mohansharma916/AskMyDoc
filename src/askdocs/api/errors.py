@@ -46,6 +46,10 @@ def install_error_handlers(app: FastAPI) -> None:
         message = f"{where}: {first.get('msg', 'invalid request')}" if where else first.get("msg", "invalid request")
         return JSONResponse(error_body("invalid_request", message), status_code=400)
 
+    @app.exception_handler(APIError)  # expected errors: a response, not a logged traceback
+    async def _api_error(_: Request, exc: APIError):
+        return JSONResponse(error_body(exc.code, exc.message), status_code=exc.status)
+
     @app.exception_handler(Exception)
     async def _any(_: Request, exc: Exception):
         status, code, message = classify(exc)

@@ -151,3 +151,14 @@ def test_upload_requires_a_session_and_strips_directories_from_names(app_client)
     upload(app_client, a, "../../evil.md", b"# Evil\n\nShould stay inside the session folder.")
     assert (app_client.services.sessions.upload_dir(a["X-Session-Id"]) / "evil.md").is_file()
     assert not (app_client.services.settings.ingest_root.parent / "evil.md").exists()
+
+
+def test_api_responses_are_never_cached(app_client):
+    # A browser that cached one session's 410 replayed it for the next session.
+    a = new_session(app_client)
+    app_client.delete("/api/v1/sessions/current", headers=a)
+    r = app_client.get("/api/v1/health", headers=a)
+    assert r.status_code == 410 and r.headers["cache-control"] == "no-store"
+    assert app_client.get("/api/v1/health").headers["cache-control"] == "no-store"
+    stream = app_client.post("/api/v1/ask/stream", json={"question": "vault"})
+    assert stream.headers["cache-control"] == "no-store" and "event: done" in stream.text

@@ -40,6 +40,26 @@ def sweep_sessions(services: Services, jobs: JobStore, stop: threading.Event) ->
             log.exception("session sweep failed")
 
 
+class NoStoreAPIResponses:
+    """Mark API responses uncacheable: they depend on the X-Session-Id header, and a browser that
+    cached one session's 410 would replay it for the next session. Pure ASGI, so SSE still streams."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or not scope["path"].startswith("/api/"):
+            return await self.app(scope, receive, send)
+
+        async def send_no_store(message):
+            if message["type"] == "http.response.start":
+                headers = [(k, v) for k, v in message.get("headers", []) if k.lower() != b"cache-control"]
+                message = {**message, "headers": [*headers, (b"cache-control", b"no-store")]}
+            await send(message)
+
+        await self.app(scope, receive, send_no_store)
+
+
 def create_app(services: Services | None = None) -> FastAPI:
     services = services or Services()
     setup_tracing(services.settings.tracing_enabled, services.settings.otel_endpoint)
@@ -70,6 +90,7 @@ def create_app(services: Services | None = None) -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    app.add_middleware(NoStoreAPIResponses)
     install_error_handlers(app)
     app.include_router(router)
     return app

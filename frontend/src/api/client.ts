@@ -165,26 +165,34 @@ export const browserSession = {
   },
 };
 
+/** Adds the session header; responses depend on it, so they must never come from the HTTP cache. */
 function withSession(init?: RequestInit): RequestInit {
   const headers = new Headers(init?.headers);
   const id = browserSession.id();
   if (id) headers.set("X-Session-Id", id);
-  return { ...init, headers };
+  return { ...init, headers, cache: "no-store" };
 }
 
-function toError(status: number, body: { error?: { code?: string; message?: string } } | null): ApiError {
+function toError(
+  status: number,
+  body: { error?: { code?: string; message?: string } } | null,
+  init: RequestInit,
+): ApiError {
   const err = body?.error ?? {};
-  if (err.code === "session_expired") expiredListeners.forEach((listener) => listener());
+  // A late reply about a session this browser already replaced must not end the new one.
+  const sentId = new Headers(init.headers).get("X-Session-Id");
+  if (err.code === "session_expired" && sentId === browserSession.id()) expiredListeners.forEach((l) => l());
   return new ApiError(status, err.code ?? "internal_error", err.message ?? `Request failed (${status})`);
 }
 
 // --- REST ---------------------------------------------------------------------
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, withSession(init));
+  const sent = withSession(init);
+  const res = await fetch(`${BASE}${path}`, sent);
   if (res.status === 204) return undefined as T;
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw toError(res.status, body);
+  if (!res.ok) throw toError(res.status, body, sent);
   return body as T;
 }
 
@@ -227,8 +235,9 @@ export type StreamEvent =
 
 /** POST /ask/stream and yield parsed events until the stream ends or `signal` aborts. Omitting topK uses RERANK_K. */
 export async function* streamAsk(question: string, signal?: AbortSignal, topK?: number): AsyncGenerator<StreamEvent> {
-  const res = await fetch(`${BASE}/ask/stream`, withSession({ ...json("POST", { question, top_k: topK }), signal }));
-  if (!res.ok || !res.body) throw toError(res.status, await res.json().catch(() => ({})));
+  const sent = withSession({ ...json("POST", { question, top_k: topK }), signal });
+  const res = await fetch(`${BASE}/ask/stream`, sent);
+  if (!res.ok || !res.body) throw toError(res.status, await res.json().catch(() => ({})), sent);
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   const parser = new SSEParser();
