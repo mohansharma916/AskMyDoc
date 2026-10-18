@@ -34,41 +34,17 @@ const info = (overrides: Partial<RuntimeSettings> = {}, editable = true): Settin
 
 afterEach(() => vi.unstubAllGlobals());
 
-it("loads settings and sends only changed fields", async () => {
-  const fetch = mockFetch({
-    "/settings": (_url: string, init?: RequestInit) =>
-      init?.method === "PATCH" ? info(JSON.parse(String(init.body))) : info(),
-    "/health": {},
-  });
-  renderWithQuery(<DeveloperSettings open onClose={() => {}} />);
-
-  const rerankK = await screen.findByLabelText("Rerank k");
-  expect(rerankK).toHaveValue(5);
-  expect(screen.getByText("BAAI/bge-small-en-v1.5")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
-
-  await userEvent.clear(rerankK);
-  await userEvent.type(rerankK, "3");
-  await userEvent.selectOptions(screen.getByLabelText("Prompt version"), "answer_v2");
-  await userEvent.click(screen.getByRole("button", { name: "Save" }));
-
-  await screen.findByText(/Saved/);
-  const patch = fetch.mock.calls.find(([, init]) => init?.method === "PATCH")!;
-  expect(JSON.parse(String(patch[1]!.body))).toEqual({ rerank_k: 3, prompt_version: "answer_v2" });
-  expect(screen.getAllByText("· changed")).toHaveLength(2);
-});
-
-it("shows Ollama fields only for the Ollama provider and never echoes the key", async () => {
+it("shows only provider, model and API key", async () => {
   mockFetch({ "/settings": info() });
   renderWithQuery(<DeveloperSettings open onClose={() => {}} />);
 
-  expect(await screen.findByLabelText("Anthropic API key")).toHaveValue("");
-  expect(screen.queryByLabelText("Ollama URL")).not.toBeInTheDocument();
-
-  await userEvent.selectOptions(screen.getByLabelText("Provider"), "ollama");
-  expect(screen.getByLabelText("Ollama URL")).toBeInTheDocument();
-  expect(screen.queryByLabelText(/API key/)).not.toBeInTheDocument();
-  expect(screen.queryByLabelText("Effort")).not.toBeInTheDocument();
+  expect(await screen.findByLabelText("Provider")).toHaveValue("anthropic");
+  expect(screen.getByLabelText("Model")).toHaveValue("claude-opus-5-5");
+  expect(screen.getByLabelText("API key")).toHaveValue("");
+  expect(document.querySelectorAll("input, select")).toHaveLength(3);
+  expect(screen.queryByText(/Restart required/)).not.toBeInTheDocument();
+  expect(screen.queryByText("BAAI/bge-small-en-v1.5")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
 });
 
 it("switches to Groq with its own key and a Groq model", async () => {
@@ -80,10 +56,9 @@ it("switches to Groq with its own key and a Groq model", async () => {
   renderWithQuery(<DeveloperSettings open onClose={() => {}} />);
 
   await userEvent.selectOptions(await screen.findByLabelText("Provider"), "groq");
-  expect(screen.getByLabelText(/^Model/)).toHaveValue("llama-3.3-70b-versatile");
-  expect(screen.getByLabelText("Temperature")).toBeInTheDocument();
-  expect(screen.queryByLabelText("Base URL")).not.toBeInTheDocument();
-  await userEvent.type(screen.getByLabelText("Groq API key"), "gsk-test");
+  expect(screen.getByLabelText("Model")).toHaveValue("llama-3.3-70b-versatile");
+  expect(screen.getByLabelText("API key")).toHaveAttribute("placeholder", "Not set");
+  await userEvent.type(screen.getByLabelText("API key"), "gsk-test");
   await userEvent.click(screen.getByRole("button", { name: "Save" }));
 
   await screen.findByText(/Saved/);
@@ -95,32 +70,28 @@ it("switches to Groq with its own key and a Groq model", async () => {
   });
 });
 
-it("shows a base URL for OpenAI", async () => {
+it("hides the API key for Ollama", async () => {
   mockFetch({ "/settings": info() });
   renderWithQuery(<DeveloperSettings open onClose={() => {}} />);
 
-  await userEvent.selectOptions(await screen.findByLabelText("Provider"), "openai");
-  expect(screen.getByLabelText(/^Model/)).toHaveValue("gpt-5-mini");
-  expect(screen.getByLabelText("Base URL")).toHaveValue("https://api.openai.com/v1");
-  expect(screen.getByLabelText("OpenAI API key")).toHaveAttribute("placeholder", "Not set");
+  await userEvent.selectOptions(await screen.findByLabelText("Provider"), "ollama");
+  expect(screen.getByLabelText("Model")).toHaveValue("llama3.1");
+  expect(screen.queryByLabelText("API key")).not.toBeInTheDocument();
 });
 
-it("shows server validation errors", async () => {
+it("shows server errors", async () => {
   mockFetch({
     "/settings": (_url: string, init?: RequestInit) =>
       init?.method === "PATCH"
-        ? new Response(JSON.stringify({ error: { code: "invalid_request", message: "rerank_k must not exceed retrieve_k." } }), {
-            status: 400,
-          })
+        ? new Response(JSON.stringify({ error: { code: "invalid_request", message: "llm_model: too long" } }), { status: 400 })
         : info(),
   });
   renderWithQuery(<DeveloperSettings open onClose={() => {}} />);
 
-  const retrieveK = await screen.findByLabelText("Retrieve k");
-  await userEvent.clear(retrieveK);
-  await userEvent.type(retrieveK, "2");
+  const model = await screen.findByLabelText("Model");
+  await userEvent.type(model, "-x");
   await userEvent.click(screen.getByRole("button", { name: "Save" }));
-  expect(await screen.findByRole("alert")).toHaveTextContent("rerank_k must not exceed retrieve_k.");
+  expect(await screen.findByRole("alert")).toHaveTextContent("llm_model: too long");
 });
 
 it("is read-only when the server disables editing, and closes on Escape", async () => {
@@ -129,7 +100,7 @@ it("is read-only when the server disables editing, and closes on Escape", async 
   renderWithQuery(<DeveloperSettings open onClose={onClose} />);
 
   expect(await screen.findByText(/Editing is disabled/)).toBeInTheDocument();
-  expect(screen.getByLabelText("Rerank k")).toBeDisabled();
+  expect(screen.getByLabelText("Model")).toBeDisabled();
   await userEvent.keyboard("{Escape}");
   await waitFor(() => expect(onClose).toHaveBeenCalled());
 });
