@@ -17,11 +17,17 @@ def test_load_shipped_prompt():
     assert NOT_FOUND in prompt.system and "[1]" in prompt.system
 
 
-def test_v2_prompt_allows_partial_answers_with_the_exact_gap_phrase():
+@pytest.mark.parametrize("version", ["answer_v2", "answer_v3"])
+def test_prompt_allows_partial_answers_with_the_exact_gap_phrase(version):
     from askdocs.generate.prompt import NOT_COVERED
 
-    prompt = load_prompt(PROJECT_ROOT / "prompts", "answer_v2")
+    prompt = load_prompt(PROJECT_ROOT / "prompts", version)
     assert f'"{NOT_COVERED}"' in prompt.system and NOT_FOUND in prompt.system
+
+
+def test_v3_prompt_reports_conflicts_instead_of_choosing():
+    system = load_prompt(PROJECT_ROOT / "prompts", "answer_v3").system
+    assert "different values for the same fact" in system and "do not pick one" in system
 
 
 def test_missing_prompt(tmp_path):

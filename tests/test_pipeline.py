@@ -17,7 +17,7 @@ def test_cited_answer_with_usage_latency_and_trace(make_services):
     assert "20 weeks" in cite.snippet
     assert result.usage.input_tokens == 100 and result.model == "fake-llm"
     assert {"retrieve", "rerank", "generate", "total"} <= result.latency_ms.keys()
-    assert result.prompt_version == "answer_v2"
+    assert result.prompt_version == "answer_v3"
 
     with services.db.session() as s:
         trace = s.scalars(select(Trace)).one()
@@ -64,6 +64,25 @@ def test_partial_answer_keeps_supported_part(make_services):
 def test_reply_of_only_gaps_abstains(make_services):
     result = make_services(llm=FakeLLM("The documents do not say how leave is paid.")).pipeline.ask("leave pay")
     assert result.abstained and result.abstain_reason == "not_in_documents"
+
+
+def test_conflicting_sources_both_reach_the_model_and_are_cited(make_services):
+    reply = (
+        "The documents disagree: directory.md names Maria Okafor as CEO [1], while update.md names Daniel Reyes [2]."
+    )
+    llm = FakeLLM(reply)
+    services = make_services(llm=llm, ingest=False)
+    services.indexer.ingest_files(
+        [
+            ("directory.md", b"# Directory\n\nThe CEO of Northwind is Maria Okafor.", "directory.md"),
+            ("update.md", b"# Update\n\nThe CEO of Northwind is Daniel Reyes.", "update.md"),
+        ]
+    )
+    result = services.pipeline.ask("Who is the CEO of Northwind?")
+    prompt = llm.calls[0][0]["content"]
+    assert "Maria Okafor" in prompt and "Daniel Reyes" in prompt
+    assert not result.abstained and result.answer == reply and len(llm.calls) == 1
+    assert {c.file_name for c in result.citations} == {"directory.md", "update.md"}
 
 
 def test_invalid_citations_trigger_one_retry(make_services):

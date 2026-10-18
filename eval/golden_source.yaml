@@ -1,6 +1,6 @@
 # Source of eval/golden.jsonl. Each answerable item lists exact evidence quotes
 # from eval/corpus; `python -m eval.build_golden` maps them to supporting chunk ids.
-# Mix: 30 single-fact, 10 multi-chunk, 10 unanswerable.
+# Mix: 30 single-fact, 10 multi-chunk, 10 unanswerable, 1 conflicting-sources.
 
 - id: g_001
   question: What are the core collaboration hours?
@@ -244,3 +244,8 @@
   question: What is the overtime pay rate for hours beyond 40 per week?
   answerable: false
   tags: [unanswerable, near-miss]
+- id: g_051
+  question: Who is the CEO of Northwind Robotics?
+  expected_answer: The documents disagree. leadership_directory.md names Maria Okafor as CEO, while company_update.md names Daniel Reyes.
+  evidence: ["The Chief Executive Officer of Northwind Robotics is Maria Okafor", "Daniel Reyes is the Chief Executive Officer of Northwind Robotics"]
+  tags: [conflict, multi-chunk]

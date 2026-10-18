@@ -52,7 +52,7 @@ class Settings(BaseSettings):
 
     # Prompts
     prompts_dir: Path = PROJECT_ROOT / "prompts"
-    prompt_version: str = "answer_v2"
+    prompt_version: str = "answer_v3"
 
     # Retrieval depth
     retrieve_k: int = 20
