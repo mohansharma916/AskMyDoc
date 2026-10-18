@@ -1,4 +1,5 @@
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
 
@@ -78,7 +79,8 @@ def _source_type(d: Document) -> str:
 
 
 def _session_out(info) -> SessionOut:
-    return SessionOut(session_id=info.session_id, expires_at=info.expires_at, ttl_s=info.ttl_s)
+    expires_in = max(0.0, (info.expires_at - datetime.now(UTC)).total_seconds())
+    return SessionOut(session_id=info.session_id, expires_at=info.expires_at, expires_in_s=expires_in, ttl_s=info.ttl_s)
 
 
 @router.post("/sessions", response_model=SessionOut, status_code=201, tags=["sessions"])

@@ -118,7 +118,9 @@ def test_heartbeat_extends_and_status_check_does_not(app_client):
     remaining = datetime.fromisoformat(before["expires_at"]) - datetime.now(UTC)
     assert remaining < timedelta(seconds=101)  # GET did not count as activity
 
+    assert 0 < before["expires_in_s"] < 101
     after = app_client.post("/api/v1/sessions/current/heartbeat", headers=a).json()
+    assert after["expires_in_s"] > 290
     remaining = datetime.fromisoformat(after["expires_at"]) - datetime.now(UTC)
     assert remaining > timedelta(seconds=290)
 

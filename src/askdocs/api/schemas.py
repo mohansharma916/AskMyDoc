@@ -63,6 +63,7 @@ class DocumentList(BaseModel):
 class SessionOut(BaseModel):
     session_id: str
     expires_at: datetime  # when the session's data is deleted unless there is more activity
+    expires_in_s: float  # same moment, relative, so browser clock skew doesn't matter
     ttl_s: int
 
 

@@ -116,6 +116,13 @@ export interface SettingsInfo {
   prompt_versions: string[];
 }
 
+export interface SessionInfo {
+  session_id: string;
+  expires_at: string;
+  expires_in_s: number;
+  ttl_s: number;
+}
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -126,16 +133,58 @@ export class ApiError extends Error {
   }
 }
 
+// --- Browser session ----------------------------------------------------------
+// One private session per browser (localStorage is shared by its tabs). Every request
+// carries the id; uploads are visible only to it and deleted when it expires.
+
+const SESSION_KEY = "askdocs_session_id";
+const expiredListeners = new Set<() => void>();
+
+export const browserSession = {
+  id(): string | null {
+    try {
+      return localStorage.getItem(SESSION_KEY);
+    } catch {
+      return null;
+    }
+  },
+  set(id: string) {
+    try {
+      localStorage.setItem(SESSION_KEY, id);
+    } catch {}
+  },
+  clear() {
+    try {
+      localStorage.removeItem(SESSION_KEY);
+    } catch {}
+  },
+  /** Called whenever the server reports the session expired; returns an unsubscribe function. */
+  onExpired(listener: () => void) {
+    expiredListeners.add(listener);
+    return () => void expiredListeners.delete(listener);
+  },
+};
+
+function withSession(init?: RequestInit): RequestInit {
+  const headers = new Headers(init?.headers);
+  const id = browserSession.id();
+  if (id) headers.set("X-Session-Id", id);
+  return { ...init, headers };
+}
+
+function toError(status: number, body: { error?: { code?: string; message?: string } } | null): ApiError {
+  const err = body?.error ?? {};
+  if (err.code === "session_expired") expiredListeners.forEach((listener) => listener());
+  return new ApiError(status, err.code ?? "internal_error", err.message ?? `Request failed (${status})`);
+}
+
 // --- REST ---------------------------------------------------------------------
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, init);
+  const res = await fetch(`${BASE}${path}`, withSession(init));
   if (res.status === 204) return undefined as T;
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const err = body?.error ?? {};
-    throw new ApiError(res.status, err.code ?? "internal_error", err.message ?? `Request failed (${res.status})`);
-  }
+  if (!res.ok) throw toError(res.status, body);
   return body as T;
 }
 
@@ -162,6 +211,10 @@ export const api = {
   settings: () => request<SettingsInfo>("/settings"),
   updateSettings: (changes: SettingsUpdate) => request<SettingsInfo>("/settings", json("PATCH", changes)),
   resetSettings: () => request<SettingsInfo>("/settings/reset", { method: "POST" }),
+  createSession: () => request<SessionInfo>("/sessions", { method: "POST" }),
+  currentSession: () => request<SessionInfo>("/sessions/current"),
+  heartbeat: () => request<SessionInfo>("/sessions/current/heartbeat", { method: "POST" }),
+  endSession: () => request<void>("/sessions/current", { method: "DELETE" }),
 };
 
 // --- Streaming ----------------------------------------------------------------
@@ -174,11 +227,8 @@ export type StreamEvent =
 
 /** POST /ask/stream and yield parsed events until the stream ends or `signal` aborts. Omitting topK uses RERANK_K. */
 export async function* streamAsk(question: string, signal?: AbortSignal, topK?: number): AsyncGenerator<StreamEvent> {
-  const res = await fetch(`${BASE}/ask/stream`, { ...json("POST", { question, top_k: topK }), signal });
-  if (!res.ok || !res.body) {
-    const err = (await res.json().catch(() => ({})))?.error ?? {};
-    throw new ApiError(res.status, err.code ?? "internal_error", err.message ?? `Request failed (${res.status})`);
-  }
+  const res = await fetch(`${BASE}/ask/stream`, withSession({ ...json("POST", { question, top_k: topK }), signal }));
+  if (!res.ok || !res.body) throw toError(res.status, await res.json().catch(() => ({})));
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   const parser = new SSEParser();

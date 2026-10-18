@@ -33,6 +33,8 @@ function sse(events: [string, unknown][]): string {
 
 async function mockApi(page: Page, streamBody: string) {
   const feedback: unknown[] = [];
+  const session = { session_id: "s-e2e", expires_at: "2026-10-18T00:05:00Z", expires_in_s: 300, ttl_s: 300 };
+  await page.route("**/api/v1/sessions**", (r) => r.fulfill({ json: session }));
   await page.route("**/api/v1/health", (r) =>
     r.fulfill({ json: { status: "ok", database: true, qdrant: true, llm: { provider: "anthropic", model: "claude-opus-5-5", configured: true }, documents: 1, chunks: 14 } }),
   );
