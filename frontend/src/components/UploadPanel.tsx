@@ -88,17 +88,17 @@ export default function UploadPanel({ onSelectDocument, activeDocId }: Props) {
         }}
         className={`group relative cursor-pointer rounded-xl border border-dashed p-4 text-center transition-all ${
           dragging
-            ? "border-amber-600 bg-amber-50/50 dark:border-amber-500 dark:bg-amber-950/20"
-            : "border-stone-300 bg-stone-50/60 hover:border-amber-600 hover:bg-stone-50 dark:border-stone-700 dark:bg-stone-850 dark:hover:border-amber-500"
+            ? "border-indigo-500 bg-indigo-50 dark:border-indigo-400 dark:bg-indigo-950/20"
+            : "border-slate-300 bg-slate-50/70 hover:border-indigo-500 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900/60 dark:hover:border-indigo-400"
         }`}
       >
-        <div className="mx-auto mb-2 flex h-8 w-8 items-center justify-center rounded-full bg-white shadow-xs group-hover:scale-105 transition-transform dark:bg-stone-800">
-          <svg className="h-4 w-4 text-stone-600 dark:text-stone-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <div className="mx-auto mb-2 flex h-8 w-8 items-center justify-center rounded-full bg-white shadow-xs group-hover:scale-105 transition-transform dark:bg-slate-800">
+          <svg className="h-4 w-4 text-slate-600 dark:text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
           </svg>
         </div>
-        <p className="text-xs font-medium text-stone-800 dark:text-stone-200">{busy ? "Indexing…" : "Drop files or click to upload"}</p>
-        <p className="mt-0.5 text-[11px] text-stone-500 dark:text-stone-400">PDF, Markdown, HTML or TXT</p>
+        <p className="text-xs font-medium text-slate-800 dark:text-slate-200">{busy ? "Indexing…" : "Drop files or click to upload"}</p>
+        <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">PDF, Markdown, HTML or TXT</p>
         <input
           ref={input}
           type="file"
@@ -127,13 +127,13 @@ export default function UploadPanel({ onSelectDocument, activeDocId }: Props) {
       {/* Main Document Listing */}
       <div>
         <div className="mb-2 flex items-center justify-between">
-          <h2 className="text-[11px] font-semibold uppercase tracking-wider text-stone-500 dark:text-stone-400">
+          <h2 className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
             Indexed documents ({allDocs.length})
           </h2>
         </div>
 
         {documents.isError && <p className="text-xs text-red-600">Could not load documents.</p>}
-        {allDocs.length === 0 && <p className="text-xs text-stone-500">No documents yet.</p>}
+        {allDocs.length === 0 && <p className="text-xs text-slate-500">No documents yet.</p>}
 
         {/* User Uploaded Section */}
         {userUploads.length > 0 && (
@@ -148,14 +148,14 @@ export default function UploadPanel({ onSelectDocument, activeDocId }: Props) {
                   key={d.doc_id}
                   className={`group flex items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-sm transition cursor-pointer ${
                     activeDocId === d.doc_id
-                      ? "bg-amber-50 text-stone-900 border border-amber-200 dark:bg-stone-800 dark:text-stone-100 dark:border-stone-700"
-                      : "hover:bg-stone-100 dark:hover:bg-stone-800/60"
+                      ? "bg-indigo-50 text-indigo-950 border border-indigo-200 dark:bg-slate-800 dark:text-slate-100 dark:border-slate-700"
+                      : "hover:bg-slate-100 dark:hover:bg-slate-800/60"
                   }`}
                   onClick={() => onSelectDocument?.(d.doc_id)}
                 >
                   <span className="min-w-0 flex-1 truncate" title={d.file_name}>
-                    <span className="font-medium text-stone-800 dark:text-stone-200">{d.title}</span>
-                    <span className="block truncate text-xs text-stone-500">
+                    <span className="font-medium text-slate-800 dark:text-slate-200">{d.title}</span>
+                    <span className="block truncate text-xs text-slate-500">
                       {d.file_name} · {d.chunks} chunks
                     </span>
                   </span>
@@ -170,7 +170,7 @@ export default function UploadPanel({ onSelectDocument, activeDocId }: Props) {
                         e.stopPropagation();
                         remove.mutate(d.doc_id);
                       }}
-                      className="rounded p-1 text-stone-400 opacity-0 hover:bg-red-50 hover:text-red-600 focus:opacity-100 group-hover:opacity-100 transition"
+                      className="rounded p-1 text-slate-400 opacity-0 hover:bg-red-50 hover:text-red-600 focus:opacity-100 group-hover:opacity-100 transition"
                     >
                       <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
                         <path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" />
@@ -187,8 +187,8 @@ export default function UploadPanel({ onSelectDocument, activeDocId }: Props) {
         {preloadedDocs.length > 0 && (
           <div>
             {userUploads.length > 0 && (
-              <div className="mb-1.5 flex items-center gap-1.5 px-1 text-[11px] font-medium text-stone-500 dark:text-stone-400">
-                <span className="h-1.5 w-1.5 rounded-full bg-stone-400"></span>
+              <div className="mb-1.5 flex items-center gap-1.5 px-1 text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                <span className="h-1.5 w-1.5 rounded-full bg-slate-400"></span>
                 Pre-loaded Corpus ({preloadedDocs.length})
               </div>
             )}
@@ -198,19 +198,19 @@ export default function UploadPanel({ onSelectDocument, activeDocId }: Props) {
                   key={d.doc_id}
                   className={`group flex items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-sm transition cursor-pointer ${
                     activeDocId === d.doc_id
-                      ? "bg-amber-50 text-stone-900 border border-amber-200 dark:bg-stone-800 dark:text-stone-100 dark:border-stone-700"
-                      : "hover:bg-stone-100 dark:hover:bg-stone-800/60"
+                      ? "bg-indigo-50 text-indigo-950 border border-indigo-200 dark:bg-slate-800 dark:text-slate-100 dark:border-slate-700"
+                      : "hover:bg-slate-100 dark:hover:bg-slate-800/60"
                   }`}
                   onClick={() => onSelectDocument?.(d.doc_id)}
                 >
                   <span className="min-w-0 flex-1 truncate" title={d.file_name}>
-                    <span className="font-medium text-stone-800 dark:text-stone-200">{d.title}</span>
-                    <span className="block truncate text-xs text-stone-500">
+                    <span className="font-medium text-slate-800 dark:text-slate-200">{d.title}</span>
+                    <span className="block truncate text-xs text-slate-500">
                       {d.file_name} · {d.chunks} chunks
                     </span>
                   </span>
                   <div className="flex items-center gap-1">
-                    <span className="rounded bg-stone-100 px-1.5 py-0.5 text-[10px] font-medium text-stone-600 dark:bg-stone-800 dark:text-stone-300">
+                    <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
                       Corpus
                     </span>
                     <button
@@ -220,7 +220,7 @@ export default function UploadPanel({ onSelectDocument, activeDocId }: Props) {
                         e.stopPropagation();
                         remove.mutate(d.doc_id);
                       }}
-                      className="rounded p-1 text-stone-400 opacity-0 hover:bg-red-50 hover:text-red-600 focus:opacity-100 group-hover:opacity-100 transition"
+                      className="rounded p-1 text-slate-400 opacity-0 hover:bg-red-50 hover:text-red-600 focus:opacity-100 group-hover:opacity-100 transition"
                     >
                       <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
                         <path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" />

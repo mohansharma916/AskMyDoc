@@ -54,6 +54,9 @@ export interface DocumentDetail {
   source_type: "preloaded" | "user_upload";
   chunks: ChunkDetail[];
   chunk_count: number;
+  full_text: string;
+  has_file: boolean;
+  file_url: string | null;
   ingested_at: string;
 }
 

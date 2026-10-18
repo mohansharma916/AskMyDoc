@@ -3,10 +3,10 @@ from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, File, Form, Request, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy import func, select
 
-from ..config import API_KEY_FIELDS, Settings
+from ..config import API_KEY_FIELDS, PROJECT_ROOT, Settings
 from ..ingest.parsers import SUPPORTED_EXTENSIONS
 from ..services import RUNTIME_KEYS, Services
 from ..store.models import Chunk, Document, Feedback, Trace
@@ -96,9 +96,18 @@ def ingest(
 ) -> IngestJob:
     s = services(request).settings
     batch: list[tuple[str, bytes, str]] = []
+    upload_dir = s.ingest_root / "uploads"
+    upload_dir.mkdir(parents=True, exist_ok=True)
     for upload in files or []:
         name = upload.filename or "upload"
-        batch.append((name, _read_upload(upload, s.max_upload_mb * 2**20), f"upload://{name}"))
+        data = _read_upload(upload, s.max_upload_mb * 2**20)
+        file_path = upload_dir / name
+        try:
+            file_path.write_bytes(data)
+            uri = f"upload://{file_path}"
+        except Exception:
+            uri = f"upload://{name}"
+        batch.append((name, data, uri))
     if path:
         batch += _files_under(path, s.ingest_root)
     if not batch:
@@ -115,6 +124,33 @@ def ingest_status(job_id: str, request: Request) -> IngestJob:
 
 
 # --- Documents ----------------------------------------------------------------
+
+
+def _resolve_doc_file_path(d: Document, s: Settings) -> Path | None:
+    uri = d.source_uri or ""
+    if uri.startswith("file://"):
+        p = Path(uri.removeprefix("file://"))
+        if p.is_file():
+            return p
+    elif uri.startswith("upload://"):
+        raw_target = uri.removeprefix("upload://")
+        p = Path(raw_target)
+        if p.is_file():
+            return p
+        p2 = s.ingest_root / "uploads" / d.file_name
+        if p2.is_file():
+            return p2
+        p3 = PROJECT_ROOT / "data" / "uploads" / d.file_name
+        if p3.is_file():
+            return p3
+    else:
+        p = Path(uri)
+        if p.is_file():
+            return p
+    p_corpus = PROJECT_ROOT / "eval" / "corpus" / d.file_name
+    if p_corpus.is_file():
+        return p_corpus
+    return None
 
 
 @router.get("/documents", response_model=DocumentList, tags=["documents"])
@@ -137,6 +173,7 @@ def documents(request: Request) -> DocumentList:
 
 @router.get("/documents/{doc_id}", response_model=DocumentDetail, tags=["documents"])
 def get_document(doc_id: str, request: Request) -> DocumentDetail:
+    s_settings = services(request).settings
     with services(request).db.session() as s:
         d = s.get(Document, doc_id)
         if d is None:
@@ -152,6 +189,17 @@ def get_document(doc_id: str, request: Request) -> DocumentDetail:
             )
             for c in d.chunks
         ]
+        file_path = _resolve_doc_file_path(d, s_settings)
+        has_file = file_path is not None and file_path.is_file()
+        full_text = ""
+        if has_file and file_path and not d.file_name.lower().endswith(".pdf"):
+            try:
+                full_text = file_path.read_text(encoding="utf-8", errors="replace")
+            except Exception:
+                full_text = "\n\n".join(c.text for c in d.chunks)
+        else:
+            full_text = "\n\n".join(c.text for c in d.chunks)
+
         return DocumentDetail(
             doc_id=d.doc_id,
             file_name=d.file_name,
@@ -160,7 +208,29 @@ def get_document(doc_id: str, request: Request) -> DocumentDetail:
             source_type="user_upload" if (d.source_uri or "").startswith("upload://") else "preloaded",
             chunks=chunks,
             chunk_count=len(chunks),
+            full_text=full_text,
+            has_file=has_file,
+            file_url=f"/api/v1/documents/{d.doc_id}/file" if has_file else None,
             ingested_at=d.ingested_at,
+        )
+
+
+@router.get("/documents/{doc_id}/file", tags=["documents"])
+def get_document_file(doc_id: str, request: Request) -> FileResponse:
+    s_settings = services(request).settings
+    with services(request).db.session() as s:
+        d = s.get(Document, doc_id)
+        if d is None:
+            raise APIError(404, "not_found", f"Unknown doc_id '{doc_id}'.")
+        file_path = _resolve_doc_file_path(d, s_settings)
+        if file_path is None or not file_path.is_file():
+            raise APIError(404, "not_found", f"Source file for '{doc_id}' not found.")
+        media_type = "application/pdf" if d.file_name.lower().endswith(".pdf") else None
+        return FileResponse(
+            file_path,
+            media_type=media_type,
+            filename=d.file_name,
+            headers={"Content-Disposition": f'inline; filename="{d.file_name}"'},
         )
 
 

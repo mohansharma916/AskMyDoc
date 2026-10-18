@@ -74,6 +74,9 @@ class DocumentDetail(BaseModel):
     source_type: Literal["preloaded", "user_upload"] = "preloaded"
     chunks: list[ChunkOut] = Field(default_factory=list)
     chunk_count: int = 0
+    full_text: str = ""
+    has_file: bool = False
+    file_url: str | None = None
     ingested_at: datetime
 
 

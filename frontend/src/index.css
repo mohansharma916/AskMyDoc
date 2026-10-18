@@ -2,22 +2,7 @@
 
 @theme {
   --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-serif: "Newsreader", Georgia, Cambria, "Times New Roman", serif;
-  --color-claude-bg: #FAF9F5;
-  --color-claude-bg-dark: #1C1B1A;
-  --color-claude-surface: #FFFFFF;
-  --color-claude-surface-dark: #262524;
-  --color-claude-sidebar: #F4F3EE;
-  --color-claude-sidebar-dark: #171615;
-  --color-claude-border: #E6E4DD;
-  --color-claude-border-dark: #33322E;
-  --color-claude-coral: #C15F3D;
-  --color-claude-coral-hover: #AA4E2E;
-  --color-claude-coral-light: #F9EFEA;
-  --color-claude-text: #232220;
-  --color-claude-text-muted: #6E6C66;
-  --color-claude-text-dark: #F2EFE9;
-  --color-claude-text-dark-muted: #9E9C94;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
 :root {
@@ -25,8 +10,8 @@
 }
 
 body {
-  background-color: var(--color-claude-bg);
-  color: var(--color-claude-text);
+  background-color: #f8fafc;
+  color: #0f172a;
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -34,7 +19,7 @@ body {
 
 @media (prefers-color-scheme: dark) {
   body {
-    background-color: var(--color-claude-bg-dark);
-    color: var(--color-claude-text-dark);
+    background-color: #090d16;
+    color: #f1f5f9;
   }
 }

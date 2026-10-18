@@ -5,19 +5,12 @@ import AnswerView from "./components/AnswerView";
 import AskBox from "./components/AskBox";
 import CitationPanel from "./components/CitationPanel";
 import DeveloperSettings from "./components/DeveloperSettings";
-import DocumentPreview from "./components/DocumentPreview";
+import DocumentViewer from "./components/DocumentViewer";
 import Feedback from "./components/Feedback";
 import NotFoundState from "./components/NotFoundState";
 import UploadPanel from "./components/UploadPanel";
 import { useAskStream } from "./hooks/useAskStream";
 import { useChatSession } from "./hooks/useChatSession";
-
-function getGreeting(): string {
-  const hour = new Date().getHours();
-  if (hour < 12) return "Good morning";
-  if (hour < 18) return "Good afternoon";
-  return "Good evening";
-}
 
 const STARTER_PROMPTS = [
   { label: "Parental leave policy", prompt: "How long is parental leave for primary caregivers?" },
@@ -105,32 +98,37 @@ export default function App() {
   const latestCitations: Citation[] = ask.result?.citations ?? activeTurn?.citations ?? [];
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#FAF9F5] text-[#232220] dark:bg-[#1C1B1A] dark:text-[#F2EFE9]">
+    <div className="flex h-screen overflow-hidden bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
       {/* Developer settings modal */}
       <DeveloperSettings open={settingsOpen} onClose={() => setSettingsOpen(false)} />
 
-      {/* Claude-style Left Sidebar */}
+      {/* Left Sidebar */}
       <aside
-        className={`fixed inset-y-0 left-0 z-30 flex w-72 flex-col border-r border-[#E6E4DD] bg-[#F4F3EE] transition-all duration-200 dark:border-[#33322E] dark:bg-[#171615] md:static ${
+        className={`fixed inset-y-0 left-0 z-30 flex w-72 flex-col border-r border-slate-200 bg-white transition-all duration-200 dark:border-slate-800 dark:bg-slate-900 md:static ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full md:-ml-72"
         }`}
       >
         {/* Sidebar Header */}
-        <div className="flex items-center justify-between border-b border-[#E6E4DD] px-4 py-3.5 dark:border-[#33322E]">
+        <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3.5 dark:border-slate-800">
           <div className="flex items-center gap-2">
-            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#C15F3D] text-white shadow-xs">
-              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 2L14.4 9.6L22 12L14.4 14.4L12 22L9.6 14.4L2 12L9.6 9.6L12 2Z" />
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-600 text-white shadow-xs">
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25"
+                />
               </svg>
             </span>
-            <span className="font-serif text-base font-semibold tracking-tight">Ask My Docs</span>
+            <span className="text-sm font-bold tracking-tight">Ask My Docs</span>
           </div>
 
           <button
             type="button"
             onClick={() => setSidebarOpen(false)}
             aria-label="Collapse sidebar"
-            className="rounded-lg p-1 text-[#6E6C66] hover:bg-[#E6E4DD] hover:text-[#232220] dark:text-[#9E9C94] dark:hover:bg-[#33322E] md:hidden"
+            className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 md:hidden"
           >
             <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
               <path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" />
@@ -143,29 +141,29 @@ export default function App() {
           <button
             type="button"
             onClick={newChat}
-            className="flex w-full items-center justify-between rounded-xl border border-[#E6E4DD] bg-white px-3.5 py-2.5 text-xs font-medium text-[#232220] shadow-2xs transition hover:border-[#C15F3D] hover:bg-[#FAF9F5] dark:border-[#33322E] dark:bg-[#262524] dark:text-[#F2EFE9] dark:hover:border-[#C15F3D]"
+            className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs font-semibold text-slate-800 shadow-2xs transition hover:border-indigo-400 hover:bg-white hover:text-indigo-600 dark:border-slate-800 dark:bg-slate-850 dark:text-slate-200 dark:hover:border-indigo-500"
           >
             <span className="flex items-center gap-2">
-              <svg className="h-4 w-4 text-[#C15F3D]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="h-4 w-4 text-indigo-600 dark:text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
               </svg>
               Start new chat
             </span>
-            <kbd className="rounded border border-[#E6E4DD] bg-[#F4F3EE] px-1.5 py-0.5 font-mono text-[10px] text-[#6E6C66] dark:border-[#33322E] dark:bg-[#171615]">
+            <kbd className="rounded border border-slate-200 bg-white px-1.5 py-0.5 font-mono text-[10px] text-slate-500 dark:border-slate-700 dark:bg-slate-800">
               New
             </kbd>
           </button>
         </div>
 
-        {/* Sidebar Nav Tabs */}
-        <div className="flex border-b border-[#E6E4DD] px-3 dark:border-[#33322E]">
+        {/* Sidebar Navigation Tabs */}
+        <div className="flex border-b border-slate-200 px-3 dark:border-slate-800">
           <button
             type="button"
             onClick={() => setSidebarTab("chats")}
-            className={`flex-1 border-b-2 py-2 text-center text-xs font-medium transition ${
+            className={`flex-1 border-b-2 py-2 text-center text-xs font-semibold transition ${
               sidebarTab === "chats"
-                ? "border-[#C15F3D] text-[#C15F3D]"
-                : "border-transparent text-[#6E6C66] hover:text-[#232220] dark:text-[#9E9C94] dark:hover:text-[#F2EFE9]"
+                ? "border-indigo-600 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400"
+                : "border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
             }`}
           >
             Chats ({sessions.length})
@@ -173,29 +171,29 @@ export default function App() {
           <button
             type="button"
             onClick={() => setSidebarTab("docs")}
-            className={`flex-1 border-b-2 py-2 text-center text-xs font-medium transition ${
+            className={`flex-1 border-b-2 py-2 text-center text-xs font-semibold transition ${
               sidebarTab === "docs"
-                ? "border-[#C15F3D] text-[#C15F3D]"
-                : "border-transparent text-[#6E6C66] hover:text-[#232220] dark:text-[#9E9C94] dark:hover:text-[#F2EFE9]"
+                ? "border-indigo-600 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400"
+                : "border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
             }`}
           >
             Documents
           </button>
         </div>
 
-        {/* Sidebar Content */}
+        {/* Sidebar Content Area */}
         <div className="flex-1 overflow-y-auto p-3">
           {sidebarTab === "chats" ? (
             <div className="space-y-1">
               <div className="flex items-center justify-between px-1.5 pb-1">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-[#6E6C66] dark:text-[#9E9C94]">
-                  Session History
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                  Browser Session History
                 </span>
                 {sessions.length > 1 && (
                   <button
                     type="button"
                     onClick={clearAllChats}
-                    className="text-[10px] text-[#6E6C66] hover:text-red-600 dark:text-[#9E9C94]"
+                    className="text-[10px] text-slate-400 hover:text-red-600 transition"
                   >
                     Clear all
                   </button>
@@ -210,8 +208,8 @@ export default function App() {
                     onClick={() => selectChat(s.id)}
                     className={`group flex items-center justify-between rounded-lg px-2.5 py-2 text-xs transition cursor-pointer ${
                       isActive
-                        ? "bg-white font-medium text-[#232220] shadow-2xs dark:bg-[#262524] dark:text-[#F2EFE9]"
-                        : "text-[#6E6C66] hover:bg-[#EAE8E1] dark:text-[#9E9C94] dark:hover:bg-[#262524]/60"
+                        ? "bg-indigo-50 font-semibold text-indigo-950 dark:bg-slate-800 dark:text-indigo-300"
+                        : "text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800/60"
                     }`}
                   >
                     <span className="truncate pr-1" title={s.title}>
@@ -224,7 +222,7 @@ export default function App() {
                         e.stopPropagation();
                         deleteChat(s.id);
                       }}
-                      className="rounded p-1 text-[#6E6C66] opacity-0 hover:text-red-600 focus:opacity-100 group-hover:opacity-100 dark:text-[#9E9C94]"
+                      className="rounded p-1 text-slate-400 opacity-0 hover:text-red-600 focus:opacity-100 group-hover:opacity-100 transition"
                     >
                       <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
                         <path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" />
@@ -240,13 +238,13 @@ export default function App() {
         </div>
 
         {/* Sidebar Footer */}
-        <div className="border-t border-[#E6E4DD] p-3 text-xs dark:border-[#33322E]">
+        <div className="border-t border-slate-200 p-3 text-xs dark:border-slate-800">
           <button
             type="button"
             aria-haspopup="dialog"
             aria-expanded={settingsOpen}
             onClick={() => setSettingsOpen(true)}
-            className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-[#6E6C66] transition hover:bg-[#E6E4DD] hover:text-[#232220] dark:text-[#9E9C94] dark:hover:bg-[#262524] dark:hover:text-[#F2EFE9]"
+            className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
@@ -260,13 +258,13 @@ export default function App() {
       {/* Main Conversation Stage */}
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* Top Navigation Bar */}
-        <header className="flex h-14 shrink-0 items-center justify-between border-b border-[#E6E4DD] bg-[#FAF9F5] px-4 dark:border-[#33322E] dark:bg-[#1C1B1A]">
+        <header className="flex h-14 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4 dark:border-slate-800 dark:bg-slate-900">
           <div className="flex items-center gap-3">
             <button
               type="button"
               aria-label="Toggle sidebar"
               onClick={() => setSidebarOpen((v) => !v)}
-              className="rounded-lg p-1.5 text-[#6E6C66] hover:bg-[#EAE8E1] hover:text-[#232220] dark:text-[#9E9C94] dark:hover:bg-[#262524]"
+              className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-800 dark:hover:bg-slate-800"
             >
               <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h7" />
@@ -279,7 +277,7 @@ export default function App() {
 
           <div className="flex items-center gap-3">
             {/* System Status */}
-            <span className="hidden items-center gap-2 text-xs text-[#6E6C66] dark:text-[#9E9C94] sm:flex">
+            <span className="hidden items-center gap-2 text-xs text-slate-500 sm:flex">
               <span
                 aria-hidden
                 className={`h-2 w-2 rounded-full ${
@@ -296,37 +294,50 @@ export default function App() {
               type="button"
               aria-label="Toggle inspector panel"
               onClick={() => setRightPanelOpen((v) => !v)}
-              className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-medium transition ${
+              className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-semibold transition ${
                 rightPanelOpen
-                  ? "border-[#C15F3D] bg-[#F9EFEA] text-[#C15F3D] dark:bg-[#C15F3D]/10"
-                  : "border-[#E6E4DD] text-[#6E6C66] hover:bg-[#EAE8E1] dark:border-[#33322E] dark:text-[#9E9C94]"
+                  ? "border-indigo-600 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300"
+                  : "border-slate-200 text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-400"
               }`}
             >
               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                />
               </svg>
-              <span>{rightPanelTab === "doc" ? "Document" : "Sources"}</span>
+              <span>{rightPanelTab === "doc" ? "Document Viewer" : "Sources"}</span>
             </button>
           </div>
         </header>
 
-        {/* Middle Stage: Chat Thread + Floating Input */}
-        <div className="relative flex flex-1 overflow-hidden">
-          <main className="flex flex-1 flex-col overflow-y-auto">
-            <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col p-4 sm:p-6 pb-36">
-              {/* Empty state: Claude-style warm greeting & starters */}
+        {/* Middle Stage: Chat Section + Right Inspector Panel */}
+        <div className="flex flex-1 overflow-hidden">
+          {/* Main Chat Section (constrained and isolated from right panel) */}
+          <main className="relative flex flex-1 flex-col overflow-hidden">
+            {/* Scrollable Conversation Content */}
+            <div className="flex-1 overflow-y-auto">
+              <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col p-4 sm:p-6 pb-36">
+              {/* Empty state: Clean Starter Prompts */}
               {activeSession?.turns.length === 0 && !streaming && (
                 <div className="my-auto flex flex-col items-center justify-center py-12 text-center">
-                  <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#F9EFEA] text-[#C15F3D] shadow-2xs dark:bg-[#C15F3D]/20">
-                    <svg className="h-6 w-6" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M12 2L14.4 9.6L22 12L14.4 14.4L12 22L9.6 14.4L2 12L9.6 9.6L12 2Z" />
+                  <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600 shadow-xs dark:bg-indigo-950/60 dark:text-indigo-400">
+                    <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+                      />
                     </svg>
                   </div>
-                  <h2 className="font-serif text-3xl font-normal tracking-tight text-[#232220] dark:text-[#F2EFE9]">
-                    {getGreeting()}
+                  <h2 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
+                    Ask My Docs
                   </h2>
-                  <p className="mt-2 max-w-md text-sm text-[#6E6C66] dark:text-[#9E9C94]">
-                    Ask any question about verified company policies, leave entitlements, travel reimbursement, and IT procedures.
+                  <p className="mt-2 max-w-md text-sm text-slate-500 dark:text-slate-400">
+                    Instant verified answers grounded directly in your organizational policies and uploaded documents.
                   </p>
 
                   <div className="mt-8 grid w-full max-w-xl grid-cols-1 gap-2.5 sm:grid-cols-2">
@@ -335,10 +346,10 @@ export default function App() {
                         key={starter.label}
                         type="button"
                         onClick={() => handleAsk(starter.prompt)}
-                        className="rounded-xl border border-[#E6E4DD] bg-white p-3.5 text-left text-xs transition hover:border-[#C15F3D] hover:shadow-2xs dark:border-[#33322E] dark:bg-[#262524]"
+                        className="rounded-xl border border-slate-200 bg-white p-3.5 text-left text-xs transition hover:border-indigo-400 hover:shadow-xs dark:border-slate-800 dark:bg-slate-900 dark:hover:border-indigo-500"
                       >
-                        <p className="font-medium text-[#232220] dark:text-[#F2EFE9]">{starter.label}</p>
-                        <p className="mt-1 line-clamp-2 text-[#6E6C66] dark:text-[#9E9C94]">{starter.prompt}</p>
+                        <p className="font-semibold text-slate-800 dark:text-slate-200">{starter.label}</p>
+                        <p className="mt-1 line-clamp-2 text-slate-500 dark:text-slate-400">{starter.prompt}</p>
                       </button>
                     ))}
                   </div>
@@ -356,21 +367,21 @@ export default function App() {
                     <div key={turn.id} className="space-y-4">
                       {/* User query bubble */}
                       <div className="flex justify-end">
-                        <div className="max-w-[85%] rounded-2xl bg-[#EAE8E1] px-4 py-2.5 text-sm font-medium text-[#232220] dark:bg-[#262524] dark:text-[#F2EFE9]">
+                        <div className="max-w-[85%] rounded-2xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white shadow-xs">
                           {turn.question}
                         </div>
                       </div>
 
                       {/* Assistant answer card */}
-                      <article className="rounded-2xl border border-[#E6E4DD] bg-white p-5 shadow-2xs dark:border-[#33322E] dark:bg-[#262524]">
+                      <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs dark:border-slate-800 dark:bg-slate-900">
                         {turn.retried && turnStreaming && (
-                          <p className="mb-2 text-xs text-[#6E6C66] dark:text-[#9E9C94]">
+                          <p className="mb-2 text-xs text-slate-500">
                             Re-checking citations and regenerating…
                           </p>
                         )}
                         {turnStreaming && !turn.answer && (
-                          <div className="flex items-center gap-2 py-2 text-sm text-[#6E6C66] dark:text-[#9E9C94]">
-                            <span className="h-2 w-2 rounded-full bg-[#C15F3D] animate-ping" />
+                          <div className="flex items-center gap-2 py-2 text-sm text-slate-500">
+                            <span className="h-2 w-2 rounded-full bg-indigo-600 animate-ping" />
                             <span>Searching and synthesizing verified sources…</span>
                           </div>
                         )}
@@ -400,9 +411,9 @@ export default function App() {
                         )}
 
                         {turn.queryId && (
-                          <footer className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[#F4F3EE] pt-3 dark:border-[#33322E]">
+                          <footer className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-3 dark:border-slate-800">
                             <Feedback key={turn.queryId} queryId={turn.queryId} />
-                            <div className="flex items-center gap-2 text-xs text-[#6E6C66] dark:text-[#9E9C94]">
+                            <div className="flex items-center gap-2 text-xs text-slate-400">
                               {turn.latencyMs?.total && (
                                 <span>{(turn.latencyMs.total / 1000).toFixed(1)} s</span>
                               )}
@@ -420,45 +431,46 @@ export default function App() {
                 })}
               </div>
             </div>
+          </div>
 
-            {/* Floating Claude Input Box */}
-            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-[#FAF9F5] via-[#FAF9F5]/90 to-transparent p-4 pt-6 dark:from-[#1C1B1A] dark:via-[#1C1B1A]/90">
-              <div className="mx-auto max-w-3xl">
+            {/* Floating Bottom Input Box (anchored strictly to chat section) */}
+            <div className="absolute inset-x-0 bottom-0 pointer-events-none bg-gradient-to-t from-slate-50 via-slate-50/90 to-transparent p-4 pt-6 dark:from-slate-950 dark:via-slate-950/90">
+              <div className="mx-auto max-w-3xl pointer-events-auto">
                 <AskBox streaming={streaming} onAsk={handleAsk} onStop={handleStop} />
               </div>
             </div>
           </main>
 
-          {/* Right Inspector Drawer (Document Preview & Citations) */}
+          {/* Right Inspector Panel (PDF Viewer / Document Viewer & Citations) */}
           <aside
-            className={`flex flex-col border-l border-[#E6E4DD] bg-[#FAF9F5] transition-all duration-200 dark:border-[#33322E] dark:bg-[#1C1B1A] ${
-              rightPanelOpen ? "w-80 lg:w-96" : "w-0 overflow-hidden"
+            className={`flex flex-col border-l border-slate-200 bg-white transition-all duration-200 dark:border-slate-800 dark:bg-slate-900 ${
+              rightPanelOpen ? "w-80 lg:w-[480px]" : "w-0 overflow-hidden"
             }`}
           >
-            {/* Panel Tabs */}
-            <div className="flex items-center justify-between border-b border-[#E6E4DD] px-3 py-2 dark:border-[#33322E]">
+            {/* Panel Mode Switcher Tabs */}
+            <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2 dark:border-slate-800">
               <div className="flex gap-1">
                 <button
                   type="button"
                   onClick={() => setRightPanelTab("citations")}
-                  className={`rounded-lg px-2.5 py-1 text-xs font-medium transition ${
+                  className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
                     rightPanelTab === "citations"
-                      ? "bg-[#C15F3D] text-white"
-                      : "text-[#6E6C66] hover:bg-[#EAE8E1] dark:text-[#9E9C94] dark:hover:bg-[#262524]"
+                      ? "bg-indigo-600 text-white shadow-2xs"
+                      : "text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
                   }`}
                 >
-                  Citations ({latestCitations.length})
+                  Sources ({latestCitations.length})
                 </button>
                 <button
                   type="button"
                   onClick={() => setRightPanelTab("doc")}
-                  className={`rounded-lg px-2.5 py-1 text-xs font-medium transition ${
+                  className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
                     rightPanelTab === "doc"
-                      ? "bg-[#C15F3D] text-white"
-                      : "text-[#6E6C66] hover:bg-[#EAE8E1] dark:text-[#9E9C94] dark:hover:bg-[#262524]"
+                      ? "bg-indigo-600 text-white shadow-2xs"
+                      : "text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
                   }`}
                 >
-                  Document Preview
+                  Document Viewer
                 </button>
               </div>
 
@@ -466,7 +478,7 @@ export default function App() {
                 type="button"
                 aria-label="Close inspector"
                 onClick={() => setRightPanelOpen(false)}
-                className="rounded-lg p-1 text-[#6E6C66] hover:bg-[#EAE8E1] hover:text-[#232220] dark:text-[#9E9C94] dark:hover:bg-[#262524]"
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800"
               >
                 <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
                   <path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" />
@@ -475,27 +487,29 @@ export default function App() {
             </div>
 
             {/* Panel Body */}
-            <div className="flex-1 overflow-y-auto p-3">
+            <div className="flex-1 overflow-hidden">
               {rightPanelTab === "citations" ? (
-                latestCitations.length > 0 ? (
-                  <CitationPanel
-                    citations={latestCitations}
-                    active={activeCitation}
-                    answer={activeTurn?.answer || ask.text || ""}
-                    onSelect={setActiveCitation}
-                    onViewDoc={handleSelectDocument}
-                  />
-                ) : (
-                  <div className="flex h-64 flex-col items-center justify-center p-6 text-center text-[#6E6C66] dark:text-[#9E9C94]">
-                    <svg className="mb-2 h-8 w-8 stroke-current stroke-1" fill="none" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25" />
-                    </svg>
-                    <p className="text-xs font-medium">No citations yet</p>
-                    <p className="mt-1 text-[11px]">Ask a question to see supporting citations here</p>
-                  </div>
-                )
+                <div className="h-full overflow-y-auto p-3">
+                  {latestCitations.length > 0 ? (
+                    <CitationPanel
+                      citations={latestCitations}
+                      active={activeCitation}
+                      answer={activeTurn?.answer || ask.text || ""}
+                      onSelect={setActiveCitation}
+                      onViewDoc={handleSelectDocument}
+                    />
+                  ) : (
+                    <div className="flex h-64 flex-col items-center justify-center p-6 text-center text-slate-400">
+                      <svg className="mb-2 h-8 w-8 stroke-current stroke-1" fill="none" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25" />
+                      </svg>
+                      <p className="text-xs font-medium">No sources active</p>
+                      <p className="mt-1 text-[11px]">Ask a question to see supporting citations here</p>
+                    </div>
+                  )}
+                </div>
               ) : (
-                <DocumentPreview docId={previewDocId} onClose={() => setRightPanelOpen(false)} />
+                <DocumentViewer docId={previewDocId} onClose={() => setRightPanelOpen(false)} />
               )}
             </div>
           </aside>

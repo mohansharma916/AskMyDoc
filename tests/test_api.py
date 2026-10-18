@@ -40,6 +40,12 @@ def test_upload_ingest_job_and_documents(client):
     detail = client.get("/api/v1/documents/travel").json()
     assert detail["doc_id"] == "travel" and detail["source_type"] == "user_upload"
     assert len(detail["chunks"]) == 1 and "Book economy." in detail["chunks"][0]["text"]
+    assert "Book economy." in detail["full_text"]
+    assert detail["has_file"] and detail["file_url"] == "/api/v1/documents/travel/file"
+
+    file_res = client.get("/api/v1/documents/travel/file")
+    assert file_res.status_code == 200
+    assert b"Book economy." in file_res.content
 
 
 def test_ingest_path_under_root(client, tmp_path):

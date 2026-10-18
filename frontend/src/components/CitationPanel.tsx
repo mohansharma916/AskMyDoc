@@ -47,7 +47,7 @@ export default function CitationPanel({ citations, active, answer, onSelect, onV
   return (
     <aside aria-label="Sources" className="flex flex-col gap-3">
       <div className="flex items-center justify-between">
-        <h2 className="text-[11px] font-semibold uppercase tracking-wider text-stone-500 dark:text-stone-400">
+        <h2 className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
           Sources ({citations.length})
         </h2>
       </div>
@@ -62,39 +62,39 @@ export default function CitationPanel({ citations, active, answer, onSelect, onV
                 aria-current={selected}
                 className={`w-full rounded-xl border p-3 text-left transition-all ${
                   selected
-                    ? "border-amber-600 bg-amber-50/60 shadow-xs dark:border-amber-500/70 dark:bg-amber-950/20"
-                    : "border-stone-200 bg-white hover:border-stone-300 dark:border-stone-800 dark:bg-stone-900"
+                    ? "border-indigo-500 bg-indigo-50/70 shadow-xs dark:border-indigo-500/70 dark:bg-indigo-950/20"
+                    : "border-slate-200 bg-white hover:border-slate-300 dark:border-slate-800 dark:bg-slate-900"
                 }`}
               >
                 <div className="flex items-baseline gap-2">
-                  <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-600 px-1.5 text-[11px] font-semibold text-white">
+                  <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-indigo-600 px-1.5 text-[11px] font-semibold text-white">
                     {c.n}
                   </span>
-                  <span className="min-w-0 flex-1 truncate text-xs font-semibold text-stone-800 dark:text-stone-200" title={c.file_name}>
+                  <span className="min-w-0 flex-1 truncate text-xs font-semibold text-slate-800 dark:text-slate-200" title={c.file_name}>
                     {c.file_name}
                   </span>
-                  {c.page !== null && <span className="shrink-0 font-mono text-[11px] text-stone-400">p. {c.page}</span>}
+                  {c.page !== null && <span className="shrink-0 font-mono text-[11px] text-slate-400">p. {c.page}</span>}
                 </div>
                 {c.section_path.length > 0 && (
-                  <p className="mt-1 truncate text-xs text-stone-500 dark:text-stone-400">{c.section_path.join(" › ")}</p>
+                  <p className="mt-1 truncate text-xs text-slate-500 dark:text-slate-400">{c.section_path.join(" › ")}</p>
                 )}
                 <p
-                  className={`mt-2 whitespace-pre-line text-xs leading-relaxed text-stone-700 dark:text-stone-300 ${
+                  className={`mt-2 whitespace-pre-line text-xs leading-relaxed text-slate-700 dark:text-slate-300 ${
                     selected ? "" : "line-clamp-3"
                   }`}
                 >
                   {selected ? highlight(c.snippet, sentencesCiting(answer, c.n)) : c.snippet}
                 </p>
                 {onViewDoc && (
-                  <div className="mt-2.5 pt-2 border-t border-stone-100 flex justify-end dark:border-stone-800">
+                  <div className="mt-2.5 pt-2 border-t border-slate-100 flex justify-end dark:border-slate-800">
                     <span
                       onClick={(e) => {
                         e.stopPropagation();
                         onViewDoc(c.doc_id);
                       }}
-                      className="text-[11px] font-medium text-amber-600 hover:text-amber-700 hover:underline dark:text-amber-500"
+                      className="text-[11px] font-medium text-indigo-600 hover:text-indigo-700 hover:underline dark:text-indigo-400"
                     >
-                      Inspect full document →
+                      Open in viewer →
                     </span>
                   </div>
                 )}

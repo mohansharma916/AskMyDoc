@@ -15,16 +15,16 @@ export function linkCitations(text: string): string {
 
 export default function AnswerView({ text, streaming, activeCitation, availableCitations, onSelectCitation }: Props) {
   return (
-    <div className="prose-stone text-sm leading-relaxed text-stone-800 dark:text-stone-200" aria-live="polite" aria-busy={streaming}>
+    <div className="prose-slate text-sm leading-relaxed text-slate-800 dark:text-slate-200" aria-live="polite" aria-busy={streaming}>
       <ReactMarkdown
         components={{
           p: ({ children }) => <p className="mb-3 last:mb-0 leading-relaxed">{children}</p>,
           ul: ({ children }) => <ul className="mb-3 list-disc pl-5 space-y-1">{children}</ul>,
           ol: ({ children }) => <ol className="mb-3 list-decimal pl-5 space-y-1">{children}</ol>,
           li: ({ children }) => <li className="leading-relaxed">{children}</li>,
-          strong: ({ children }) => <strong className="font-semibold text-stone-900 dark:text-stone-100">{children}</strong>,
+          strong: ({ children }) => <strong className="font-semibold text-slate-900 dark:text-slate-100">{children}</strong>,
           code: ({ children }) => (
-            <code className="rounded bg-stone-100 px-1.5 py-0.5 font-mono text-xs text-stone-800 dark:bg-stone-800 dark:text-stone-200">
+            <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs text-slate-800 dark:bg-slate-800 dark:text-slate-200">
               {children}
             </code>
           ),
@@ -32,7 +32,7 @@ export default function AnswerView({ text, streaming, activeCitation, availableC
             const match = href?.match(/^#cite-(\d+)$/);
             if (!match) {
               return (
-                <a href={href} target="_blank" rel="noreferrer" className="text-amber-600 underline hover:text-amber-700">
+                <a href={href} target="_blank" rel="noreferrer" className="text-indigo-600 underline hover:text-indigo-700">
                   {children}
                 </a>
               );
@@ -48,8 +48,8 @@ export default function AnswerView({ text, streaming, activeCitation, availableC
                 onClick={() => onSelectCitation(n)}
                 className={`mx-0.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 align-[2px] text-[11px] font-semibold transition ${
                   activeCitation === n
-                    ? "bg-amber-600 text-white shadow-xs"
-                    : "bg-amber-100 text-amber-800 hover:bg-amber-200 dark:bg-amber-950/70 dark:text-amber-300"
+                    ? "bg-indigo-600 text-white shadow-xs"
+                    : "bg-indigo-100 text-indigo-700 hover:bg-indigo-200 dark:bg-indigo-950/70 dark:text-indigo-300"
                 } disabled:cursor-default disabled:opacity-50`}
               >
                 {n}
@@ -60,7 +60,7 @@ export default function AnswerView({ text, streaming, activeCitation, availableC
       >
         {linkCitations(text)}
       </ReactMarkdown>
-      {streaming && <span className="ml-1 inline-block h-3.5 w-1.5 rounded-full bg-amber-600 animate-pulse align-middle" />}
+      {streaming && <span className="ml-1 inline-block h-3.5 w-1.5 rounded-full bg-indigo-600 animate-pulse align-middle" />}
     </div>
   );
 }
