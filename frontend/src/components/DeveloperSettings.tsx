@@ -1,21 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type FormEvent, useEffect, useRef, useState } from "react";
-import { API_KEY_FIELDS, api, type LLMProvider, type RuntimeSettings, type SettingsInfo, type SettingsUpdate } from "../api/client";
-
-type Key = Exclude<keyof RuntimeSettings, "api_keys_set">;
-type Draft = Record<Key, string>;
-
-interface Field {
-  key: Key;
-  label: string;
-  help: string;
-  kind: "text" | "number" | "select";
-  options?: string[];
-  min?: number;
-  max?: number;
-  step?: number;
-  when?: (d: Draft) => boolean;
-}
+import { API_KEY_FIELDS, api, type LLMProvider, type SettingsInfo, type SettingsUpdate } from "../api/client";
 
 const PROVIDERS: Record<LLMProvider, { label: string; models: string[] }> = {
   anthropic: { label: "Anthropic", models: ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"] },
@@ -25,118 +10,30 @@ const PROVIDERS: Record<LLMProvider, { label: string; models: string[] }> = {
 };
 const hasKey = (p: string): p is keyof typeof API_KEY_FIELDS => p in API_KEY_FIELDS;
 
-const SECTIONS: { title: string; note?: string; fields: Field[] }[] = [
-  {
-    title: "Language model",
-    fields: [
-      {
-        key: "llm_provider",
-        label: "Provider",
-        help: "Claude, OpenAI or Groq over their APIs, or a local Ollama model.",
-        kind: "select",
-        options: Object.keys(PROVIDERS),
-      },
-      { key: "llm_model", label: "Model", help: "Model id; pick a suggestion or type any model the provider offers.", kind: "text" },
-      {
-        key: "llm_effort",
-        label: "Effort",
-        help: "How much the model thinks before answering. Higher is slower and costlier.",
-        kind: "select",
-        options: ["low", "medium", "high", "xhigh", "max"],
-        when: (d) => d.llm_provider === "anthropic",
-      },
-      {
-        key: "llm_temperature",
-        label: "Temperature",
-        help: "Sampling temperature. Ignored by models that don't support it.",
-        kind: "number",
-        min: 0,
-        max: 2,
-        step: 0.05,
-        when: (d) => d.llm_provider !== "anthropic",
-      },
-      {
-        key: "openai_base_url",
-        label: "Base URL",
-        help: "OpenAI's API, or any OpenAI-compatible server (vLLM, LM Studio, Together…).",
-        kind: "text",
-        when: (d) => d.llm_provider === "openai",
-      },
-      { key: "ollama_url", label: "Ollama URL", help: "Base URL of the Ollama server.", kind: "text", when: (d) => d.llm_provider === "ollama" },
-      { key: "llm_timeout_s", label: "Timeout (s)", help: "Per-request LLM timeout.", kind: "number", min: 1, max: 600, step: 1 },
-    ],
-  },
-  {
-    title: "Prompt",
-    fields: [{ key: "prompt_version", label: "Prompt version", help: "File in prompts/ used as the system prompt.", kind: "select" }],
-  },
-  {
-    title: "Retrieval",
-    fields: [
-      { key: "retrieve_k", label: "Retrieve k", help: "Candidates fetched by hybrid search before reranking.", kind: "number", min: 1, max: 100, step: 1 },
-      { key: "rerank_k", label: "Rerank k", help: "Top reranked chunks shown to the LLM. Must be ≤ retrieve k.", kind: "number", min: 1, max: 20, step: 1 },
-      {
-        key: "abstain_threshold",
-        label: "Abstain threshold",
-        help: "Minimum best rerank score (0–1) needed to answer; below it the app says “not found”.",
-        kind: "number",
-        min: 0,
-        max: 1,
-        step: 0.01,
-      },
-      { key: "rerank_model", label: "Reranker model", help: "Cross-encoder; a new one downloads and loads on the next question.", kind: "text" },
-    ],
-  },
-  {
-    title: "Ingestion",
-    note: "Applies to documents indexed after the change. Already-indexed files keep their chunks until they change.",
-    fields: [
-      { key: "chunk_size", label: "Chunk size (tokens)", help: "Target tokens per chunk.", kind: "number", min: 64, max: 4096, step: 1 },
-      { key: "chunk_overlap", label: "Chunk overlap (tokens)", help: "Tokens shared between neighbouring chunks.", kind: "number", min: 0, max: 1024, step: 1 },
-      { key: "max_upload_mb", label: "Max upload (MB)", help: "Largest file accepted by the upload box.", kind: "number", min: 1, max: 500, step: 1 },
-    ],
-  },
-];
-
-const FIELDS = SECTIONS.flatMap((s) => s.fields);
-
-const toDraft = (s: RuntimeSettings): Draft =>
-  Object.fromEntries(FIELDS.map((f) => [f.key, String(s[f.key])])) as Draft;
-
-const parse = (f: Field, value: string) => (f.kind === "number" ? Number(value) : value.trim());
-
-/** Only the fields that differ from what the server has. */
-function changes(draft: Draft, current: RuntimeSettings): SettingsUpdate {
-  const out: Record<string, string | number> = {};
-  for (const f of FIELDS) {
-    const value = parse(f, draft[f.key]);
-    if (value !== current[f.key]) out[f.key] = value;
-  }
-  return out as SettingsUpdate;
-}
-
 const inputClass =
   "w-full rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900";
 
 function SettingsForm({ info, onClose }: { info: SettingsInfo; onClose: () => void }) {
   const queryClient = useQueryClient();
-  const [draft, setDraft] = useState<Draft>(() => toDraft(info.settings));
+  const [provider, setProvider] = useState<LLMProvider>(info.settings.llm_provider);
+  const [model, setModel] = useState(info.settings.llm_model);
   const [apiKey, setApiKey] = useState("");
   const [saved, setSaved] = useState(false);
 
   const applied = (next: SettingsInfo) => {
     queryClient.setQueryData(["settings"], next);
     void queryClient.invalidateQueries({ queryKey: ["health"] });
-    setDraft(toDraft(next.settings));
+    setProvider(next.settings.llm_provider);
+    setModel(next.settings.llm_model);
     setApiKey("");
     setSaved(true);
   };
   const save = useMutation({ mutationFn: api.updateSettings, onSuccess: applied });
   const reset = useMutation({ mutationFn: api.resetSettings, onSuccess: applied });
 
-  const provider = draft.llm_provider as LLMProvider;
   const pending: SettingsUpdate = {
-    ...changes(draft, info.settings),
+    ...(provider !== info.settings.llm_provider ? { llm_provider: provider } : {}),
+    ...(model.trim() !== info.settings.llm_model ? { llm_model: model.trim() } : {}),
     ...(apiKey && hasKey(provider) ? { [API_KEY_FIELDS[provider]]: apiKey } : {}),
   };
   const dirty = Object.keys(pending).length > 0;
@@ -144,17 +41,12 @@ function SettingsForm({ info, onClose }: { info: SettingsInfo; onClose: () => vo
   const error = save.error ?? reset.error;
   const readOnly = !info.editable;
 
-  const set = (key: Key, value: string) => {
+  const changeProvider = (p: LLMProvider) => {
+    // Keep the saved model when switching back; otherwise suggest the new provider's default.
     setSaved(false);
-    if (key === "llm_provider") {
-      // Keep the saved model when switching back; otherwise suggest the new provider's default.
-      const p = value as LLMProvider;
-      const model = p === info.settings.llm_provider ? info.settings.llm_model : PROVIDERS[p].models[0];
-      setApiKey("");
-      setDraft((d) => ({ ...d, llm_provider: p, llm_model: model }));
-    } else {
-      setDraft((d) => ({ ...d, [key]: value }));
-    }
+    setProvider(p);
+    setModel(p === info.settings.llm_provider ? info.settings.llm_model : PROVIDERS[p].models[0]);
+    setApiKey("");
   };
 
   const submit = (e: FormEvent) => {
@@ -164,110 +56,77 @@ function SettingsForm({ info, onClose }: { info: SettingsInfo; onClose: () => vo
 
   return (
     <form onSubmit={submit} className="flex min-h-0 flex-1 flex-col">
-      <div className="flex-1 space-y-6 overflow-y-auto px-5 py-4">
+      <fieldset className="flex-1 space-y-4 overflow-y-auto px-5 py-4" disabled={readOnly || busy}>
         {readOnly && (
           <p className="rounded-md bg-amber-50 p-3 text-xs text-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
             Editing is disabled on this server (DEV_SETTINGS_ENABLED=false).
           </p>
         )}
 
-        {SECTIONS.map((section) => (
-          <fieldset key={section.title} className="space-y-3" disabled={readOnly || busy}>
-            <legend className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">{section.title}</legend>
-            {section.note && <p className="text-xs text-slate-500">{section.note}</p>}
-
-            {section.fields
-              .filter((f) => !f.when || f.when(draft))
-              .map((f) => {
-                const id = `dev-${f.key}`;
-                const modified = parse(f, draft[f.key]) !== info.defaults[f.key];
-                const options = f.key === "prompt_version" ? info.prompt_versions : f.options;
-                return (
-                  <div key={f.key}>
-                    <label htmlFor={id} className="mb-1 flex items-center gap-1.5 text-sm font-medium">
-                      {f.label}
-                      {modified && (
-                        <span title={`Default: ${info.defaults[f.key]}`} className="text-xs font-normal text-indigo-600 dark:text-indigo-400">
-                          · changed
-                        </span>
-                      )}
-                    </label>
-                    {f.kind === "select" ? (
-                      <select id={id} value={draft[f.key]} onChange={(e) => set(f.key, e.target.value)} className={inputClass}>
-                        {options?.map((o) => (
-                          <option key={o} value={o}>
-                            {f.key === "llm_provider" ? PROVIDERS[o as LLMProvider].label : o}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <input
-                        id={id}
-                        type={f.kind}
-                        required
-                        min={f.min}
-                        max={f.max}
-                        step={f.step}
-                        value={draft[f.key]}
-                        list={f.key === "llm_model" ? "dev-models" : undefined}
-                        onChange={(e) => set(f.key, e.target.value)}
-                        className={inputClass}
-                      />
-                    )}
-                    <p className="mt-1 text-xs text-slate-500">{f.help}</p>
-                  </div>
-                );
-              })}
-
-            {section.title === "Language model" && hasKey(provider) && (
-              <div>
-                <label htmlFor="dev-api-key" className="mb-1 block text-sm font-medium">
-                  {PROVIDERS[provider].label} API key
-                </label>
-                <input
-                  id="dev-api-key"
-                  type="password"
-                  autoComplete="off"
-                  value={apiKey}
-                  placeholder={
-                    info.settings.api_keys_set[provider]
-                      ? "•••••••• (set — type to replace)"
-                      : `Not set${provider === "anthropic" ? " — uses ANTHROPIC_API_KEY" : ""}`
-                  }
-                  onChange={(e) => {
-                    setSaved(false);
-                    setApiKey(e.target.value);
-                  }}
-                  className={inputClass}
-                />
-                <p className="mt-1 text-xs text-slate-500">
-                  Used only for {PROVIDERS[provider].label}. Write-only: the server never sends it back.
-                </p>
-              </div>
-            )}
-          </fieldset>
-        ))}
-        <datalist id="dev-models">
-          {PROVIDERS[provider].models.map((m) => (
-            <option key={m} value={m} />
-          ))}
-        </datalist>
-
-        <section>
-          <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">Restart required</h3>
-          <p className="mb-2 text-xs text-slate-500">Change these in .env and restart the API.</p>
-          <dl className="space-y-1 text-xs">
-            {Object.entries(info.restart_required).map(([k, v]) => (
-              <div key={k} className="flex justify-between gap-3">
-                <dt className="font-mono text-slate-500">{k.toUpperCase()}</dt>
-                <dd className="truncate font-mono" title={String(v)}>
-                  {String(v)}
-                </dd>
-              </div>
+        <div>
+          <label htmlFor="dev-provider" className="mb-1 block text-sm font-medium">
+            Provider
+          </label>
+          <select
+            id="dev-provider"
+            value={provider}
+            onChange={(e) => changeProvider(e.target.value as LLMProvider)}
+            className={inputClass}
+          >
+            {(Object.keys(PROVIDERS) as LLMProvider[]).map((p) => (
+              <option key={p} value={p}>
+                {PROVIDERS[p].label}
+              </option>
             ))}
-          </dl>
-        </section>
-      </div>
+          </select>
+        </div>
+
+        <div>
+          <label htmlFor="dev-model" className="mb-1 block text-sm font-medium">
+            Model
+          </label>
+          <input
+            id="dev-model"
+            required
+            value={model}
+            list="dev-models"
+            onChange={(e) => {
+              setSaved(false);
+              setModel(e.target.value);
+            }}
+            className={inputClass}
+          />
+          <datalist id="dev-models">
+            {PROVIDERS[provider].models.map((m) => (
+              <option key={m} value={m} />
+            ))}
+          </datalist>
+          <p className="mt-1 text-xs text-slate-500">Pick a suggestion or type any model the provider offers.</p>
+        </div>
+
+        {hasKey(provider) && (
+          <div>
+            <label htmlFor="dev-api-key" className="mb-1 block text-sm font-medium">
+              API key
+            </label>
+            <input
+              id="dev-api-key"
+              type="password"
+              autoComplete="off"
+              value={apiKey}
+              placeholder={info.settings.api_keys_set[provider] ? "•••••••• (set — type to replace)" : "Not set"}
+              onChange={(e) => {
+                setSaved(false);
+                setApiKey(e.target.value);
+              }}
+              className={inputClass}
+            />
+            <p className="mt-1 text-xs text-slate-500">
+              Used only for {PROVIDERS[provider].label}. The server never sends it back.
+            </p>
+          </div>
+        )}
+      </fieldset>
 
       <footer className="border-t border-slate-200 px-5 py-3 dark:border-slate-800">
         <div aria-live="polite" className="mb-2 min-h-4 text-xs">
