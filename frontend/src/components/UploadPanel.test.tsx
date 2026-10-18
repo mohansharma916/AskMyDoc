@@ -57,18 +57,21 @@ it("shows upload errors", async () => {
   expect(await screen.findByText("'big.pdf' exceeds the 25 MB limit.")).toBeInTheDocument();
 });
 
-it("removes a document", async () => {
-  let docs = [doc];
+it("removes the session's own upload but not shared documents", async () => {
+  const shared = { ...doc, doc_id: "it", file_name: "it.md", title: "IT Policy", source_type: "preloaded" };
+  let docs = [{ ...doc, source_type: "user_upload" }, shared];
   const fetch = mockFetch({
     "/documents/hr": () => {
-      docs = [];
+      docs = docs.filter((d) => d.doc_id !== "hr");
       return new Response(null, { status: 204 });
     },
     "/documents": () => ({ documents: docs }),
   });
   renderWithQuery(<UploadPanel />);
   await userEvent.click(await screen.findByRole("button", { name: "Remove hr.md" }));
-  await waitFor(() => expect(screen.getByText("No documents yet.")).toBeInTheDocument());
+  await waitFor(() => expect(screen.queryByText("HR Handbook")).not.toBeInTheDocument());
+  expect(screen.getByText("IT Policy")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Remove it.md" })).not.toBeInTheDocument();
   expect(fetch.mock.calls.some(([url, init]) => String(url).endsWith("/documents/hr") && init?.method === "DELETE")).toBe(
     true,
   );

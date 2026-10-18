@@ -12,10 +12,22 @@ class Base(DeclarativeBase):
     pass
 
 
+class BrowserSession(Base):
+    """An anonymous browser session; its uploads are private and deleted when it expires."""
+
+    __tablename__ = "sessions"
+
+    session_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class Document(Base):
     __tablename__ = "documents"
 
     doc_id: Mapped[str] = mapped_column(String(200), primary_key=True)
+    # Owning browser session; None for shared documents ingested with the CLI.
+    session_id: Mapped[str | None] = mapped_column(String(64), index=True, nullable=True)
     file_name: Mapped[str] = mapped_column(String(500))
     source_uri: Mapped[str] = mapped_column(Text)
     content_hash: Mapped[str] = mapped_column(String(64), index=True)
@@ -58,6 +70,7 @@ class Trace(Base):
     model: Mapped[str | None] = mapped_column(String(100), nullable=True)
     prompt_version: Mapped[str | None] = mapped_column(String(40), nullable=True)
     otel_trace_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    session_id: Mapped[str | None] = mapped_column(String(64), index=True, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 

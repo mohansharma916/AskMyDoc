@@ -13,30 +13,43 @@ class JobStore:
     def __init__(self, services: Services):
         self.services = services  # the indexer (and its models) load on the first job
         self._jobs: dict[str, IngestJob] = {}
+        self._owners: dict[str, str | None] = {}  # job_id -> browser session that started it
         self._lock = threading.Lock()
         self._pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="ingest")
 
-    def get(self, job_id: str) -> IngestJob | None:
+    def get(self, job_id: str, session_id: str | None = None) -> IngestJob | None:
+        """The job, if it exists and was started by this session."""
         with self._lock:
-            return self._jobs.get(job_id)
+            job = self._jobs.get(job_id)
+            return job if job is not None and self._owners.get(job_id) == session_id else None
 
-    def submit(self, files: list[tuple[str, bytes, str]]) -> IngestJob:
+    def active_sessions(self) -> set[str]:
+        """Sessions with an ingest still queued or running; they must not expire mid-ingest."""
+        with self._lock:
+            return {
+                owner
+                for job_id, owner in self._owners.items()
+                if owner and self._jobs[job_id].status in ("queued", "running")
+            }
+
+    def submit(self, files: list[tuple[str, bytes, str]], session_id: str | None = None) -> IngestJob:
         job = IngestJob(
             job_id="j_" + uuid.uuid4().hex[:16], status="queued", files=len(files), created_at=datetime.now(UTC)
         )
         with self._lock:
             self._jobs[job.job_id] = job
-        self._pool.submit(self._run, job.job_id, files)
+            self._owners[job.job_id] = session_id
+        self._pool.submit(self._run, job.job_id, files, session_id)
         return job
 
     def _update(self, job_id: str, **changes) -> None:
         with self._lock:
             self._jobs[job_id] = self._jobs[job_id].model_copy(update=changes)
 
-    def _run(self, job_id: str, files: list[tuple[str, bytes, str]]) -> None:
+    def _run(self, job_id: str, files: list[tuple[str, bytes, str]], session_id: str | None = None) -> None:
         self._update(job_id, status="running")
         try:
-            summary = self.services.indexer.ingest_files(files)
+            summary = self.services.indexer.ingest_files(files, session_id=session_id)
         except Exception as exc:  # e.g. Qdrant down: the whole job fails
             self._update(job_id, status="failed", error=str(exc), finished_at=datetime.now(UTC))
             return
@@ -48,6 +61,8 @@ class JobStore:
             chunks=summary.chunks,
         )
         results = [IngestFileResult(**r.__dict__) for r in summary.results]
+        if session_id:  # finishing an upload counts as activity; touch before the job stops protecting it
+            self.services.sessions.get(session_id, touch=True)
         self._update(job_id, status="completed", counts=counts, results=results, finished_at=datetime.now(UTC))
 
     def wait(self, timeout: float = 30.0) -> None:

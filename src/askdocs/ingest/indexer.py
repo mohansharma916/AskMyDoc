@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from ..retrieve.bm25 import BM25Index
 from ..retrieve.embeddings import Embedder
@@ -52,6 +52,11 @@ def slugify(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-") or "document"
 
 
+def session_tag(session_id: str) -> str:
+    """Short, non-reversible label for a session, safe to use in doc ids and folder names."""
+    return hashlib.sha256(session_id.encode()).hexdigest()[:12]
+
+
 def make_chunk_id(doc_id: str, content_hash: str, position: int) -> str:
     """Deterministic UUID: the same file content always yields the same chunk ids."""
     return str(uuid.uuid5(CHUNK_NAMESPACE, f"{doc_id}:{content_hash}:{position}"))
@@ -82,9 +87,12 @@ class Indexer:
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
 
-    def _doc_id_for(self, file_name: str, source_uri: str) -> str:
-        """Slug of the file stem; disambiguated if another file already owns it."""
+    def _doc_id_for(self, file_name: str, source_uri: str, session_id: str | None = None) -> str:
+        """Slug of the file stem (plus a session tag for session uploads, so two browsers
+        uploading report.pdf never collide); disambiguated if another file already owns it."""
         base = slugify(Path(file_name).stem)
+        if session_id:
+            base = f"{base}--{session_tag(session_id)}"
         with self.db.session() as s:
             existing = s.get(Document, base)
             if existing is None or existing.file_name == file_name:
@@ -92,9 +100,11 @@ class Indexer:
         suffix = slugify(Path(file_name).suffix) or hashlib.sha1(source_uri.encode()).hexdigest()[:6]
         return f"{base}-{suffix}"
 
-    def ingest_bytes(self, file_name: str, data: bytes, source_uri: str | None = None) -> IngestResult:
+    def ingest_bytes(
+        self, file_name: str, data: bytes, source_uri: str | None = None, session_id: str | None = None
+    ) -> IngestResult:
         source_uri = source_uri or file_name
-        doc_id = self._doc_id_for(file_name, source_uri)
+        doc_id = self._doc_id_for(file_name, source_uri, session_id)
         content_hash = hashlib.sha256(data).hexdigest()
 
         with self.db.session() as s:
@@ -117,6 +127,7 @@ class Indexer:
                 self.vectors.delete_document(doc_id)
             doc = Document(
                 doc_id=doc_id,
+                session_id=session_id,
                 file_name=file_name,
                 source_uri=source_uri,
                 content_hash=content_hash,
@@ -142,6 +153,7 @@ class Indexer:
                         vector,
                         {
                             "doc_id": doc_id,
+                            "session_id": session_id,
                             "file_name": file_name,
                             "title": parsed.title,
                             "page": c.page,
@@ -164,12 +176,13 @@ class Indexer:
             files = sorted(p for p in path.rglob("*") if p.suffix.lower() in SUPPORTED_EXTENSIONS)
         return self.ingest_files((f.name, f.read_bytes(), str(f.resolve())) for f in files if f.is_file())
 
-    def ingest_files(self, files) -> IngestSummary:
-        """Ingest (file_name, data, source_uri) triples; failures are recorded, not raised."""
+    def ingest_files(self, files, session_id: str | None = None) -> IngestSummary:
+        """Ingest (file_name, data, source_uri) triples; failures are recorded, not raised.
+        With a session_id the documents belong to that browser session; otherwise they are shared."""
         summary = IngestSummary()
         for file_name, data, source_uri in files:
             try:
-                summary.results.append(self.ingest_bytes(file_name, data, source_uri))
+                summary.results.append(self.ingest_bytes(file_name, data, source_uri, session_id))
             except Exception as exc:
                 log.warning("failed %s: %s", file_name, exc)
                 summary.results.append(IngestResult("", file_name, "failed", error=str(exc)))
@@ -185,18 +198,33 @@ class Indexer:
         return summary
 
     def delete(self, doc_id: str) -> bool:
-        with self.db.session() as s:
-            doc = s.get(Document, doc_id)
-            if doc is None:
-                return False
-            s.delete(doc)
-        self.vectors.delete_document(doc_id)
-        self.bm25.rebuild_from_db(self.db)
-        return True
+        return self.delete_many([doc_id]) == 1
 
-    def list_documents(self) -> list[Document]:
+    def delete_many(self, doc_ids: list[str]) -> int:
+        """Delete documents from SQLite (chunks cascade), Qdrant and BM25; returns how many existed."""
         with self.db.session() as s:
-            docs = s.scalars(select(Document).order_by(Document.file_name)).all()
+            docs = s.scalars(select(Document).where(Document.doc_id.in_(doc_ids))).all()
+            for doc in docs:
+                s.delete(doc)
+        if docs:
+            self.vectors.delete_documents([d.doc_id for d in docs])
+            self.bm25.rebuild_from_db(self.db)
+        return len(docs)
+
+    @staticmethod
+    def visible(session_id: str | None):
+        """SQL condition: shared documents plus the given session's own uploads."""
+        shared = Document.session_id.is_(None)
+        return or_(shared, Document.session_id == session_id) if session_id else shared
+
+    def visible_doc_ids(self, session_id: str | None) -> list[str]:
+        with self.db.session() as s:
+            return list(s.scalars(select(Document.doc_id).where(self.visible(session_id))))
+
+    def list_documents(self, session_id: str | None = None) -> list[Document]:
+        with self.db.session() as s:
+            query = select(Document).where(self.visible(session_id)).order_by(Document.file_name)
+            docs = s.scalars(query).all()
             for d in docs:
                 _ = d.chunks  # load before the session closes
             return list(docs)

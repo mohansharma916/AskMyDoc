@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     max_upload_mb: int = 25
     ingest_root: Path = PROJECT_ROOT / "data"  # POST /ingest {path} may only read below this folder
     warmup_models: bool = True  # load embedding + reranker models at startup
+    session_ttl_s: int = 300  # a browser session's uploads are deleted after this much inactivity
+    session_sweep_s: int = 30  # how often expired sessions are cleaned up
     dev_settings_enabled: bool = True  # allow PATCH /settings (the UI's Developer settings); disable when exposed
 
     # Tracing (OTLP/HTTP: Phoenix at :6006 by default; Langfuse via its OTLP endpoint + OTEL_EXPORTER_OTLP_HEADERS)

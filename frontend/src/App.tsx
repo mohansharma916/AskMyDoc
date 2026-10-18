@@ -8,6 +8,7 @@ import DeveloperSettings from "./components/DeveloperSettings";
 import DocumentViewer from "./components/DocumentViewer";
 import Feedback from "./components/Feedback";
 import NotFoundState from "./components/NotFoundState";
+import SessionBanner from "./components/SessionBanner";
 import UploadPanel from "./components/UploadPanel";
 import { useAskStream } from "./hooks/useAskStream";
 import { useChatSession } from "./hooks/useChatSession";
@@ -365,6 +366,7 @@ export default function App() {
             </button>
           </div>
         </header>
+        <SessionBanner />
 
         {/* Middle Stage: Chat Section + Right Inspector Panel */}
         <div className="flex flex-1 overflow-hidden">
