@@ -1,11 +1,14 @@
-"""LLM clients behind one interface: Claude (Anthropic SDK) or a local Ollama model.
+"""LLM clients behind one interface: Claude (Anthropic SDK), OpenAI or Groq
+(OpenAI-compatible Chat Completions), or a local Ollama model.
 
 ``complete`` returns a Completion; ``stream`` yields text deltas and then, as
 its last item, the Completion with usage. Provider errors are translated into
 the LLMError hierarchy so the API maps them to HTTP status codes uniformly.
 """
 
+import json
 from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Protocol
 
@@ -195,6 +198,126 @@ class OllamaLLM:
                     return
 
 
+OPENAI_URL = "https://api.openai.com/v1"
+GROQ_URL = "https://api.groq.com/openai/v1"
+
+
+class OpenAICompatibleLLM:
+    """OpenAI's /chat/completions endpoint, which Groq and many local servers also speak."""
+
+    def __init__(
+        self,
+        model: str,
+        api_key: str | None,
+        base_url: str = OPENAI_URL,
+        temperature: float | None = 0.1,
+        timeout_s: float = 30.0,
+        max_tokens: int = 8000,
+        provider: str = "OpenAI",
+        stream_usage: bool = True,
+    ):
+        self.model = model
+        self.temperature = temperature
+        self.max_tokens = max_tokens
+        self.provider = provider
+        self.stream_usage = stream_usage  # stream_options.include_usage; Groq reports usage in x_groq instead
+        self._api_key = api_key
+        headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+        self._http = httpx.Client(base_url=base_url, timeout=timeout_s, headers=headers)
+
+    def _body(self, system: str, messages: list[dict], stream: bool) -> dict:
+        body = {
+            "model": self.model,
+            "messages": [{"role": "system", "content": system}, *messages],
+            "max_completion_tokens": self.max_tokens,
+            "stream": stream,
+        }
+        if self.temperature is not None:
+            body["temperature"] = self.temperature
+        if stream and self.stream_usage:
+            body["stream_options"] = {"include_usage": True}
+        return body
+
+    @contextmanager
+    def _post(self, system: str, messages: list[dict], stream: bool) -> Iterator[httpx.Response]:
+        if not self._api_key:
+            raise LLMNotConfigured(f"No {self.provider} API key configured. Add it in Developer settings or .env.")
+        with _translate_openai_errors(self.provider):
+            for _ in range(2):
+                body = self._body(system, messages, stream)
+                with self._http.stream("POST", "/chat/completions", json=body) as r:
+                    if r.status_code == 400 and self.temperature is not None and b"temperature" in r.read():
+                        self.temperature = None  # reasoning models (e.g. gpt-5, o-series) only allow the default
+                        continue
+                    if r.is_error:
+                        r.read()
+                        r.raise_for_status()
+                    yield r
+                    return
+
+    def _usage(self, data: dict | None) -> Usage:
+        data = data or {}
+        return Usage(data.get("prompt_tokens", 0), data.get("completion_tokens", 0), None)
+
+    def complete(self, system: str, messages: list[dict]) -> Completion:
+        with self._post(system, messages, stream=False) as r:
+            data = json.loads(r.read())
+        message = data["choices"][0]["message"]
+        if message.get("refusal") and not message.get("content"):
+            raise LLMRefusal(message["refusal"])
+        return Completion(
+            (message.get("content") or "").strip(), data.get("model", self.model), self._usage(data.get("usage"))
+        )
+
+    def stream(self, system: str, messages: list[dict]) -> Iterator[str | Completion]:
+        parts: list[str] = []
+        refusal, usage, model = "", None, self.model
+        with self._post(system, messages, stream=True) as r:
+            for line in r.iter_lines():
+                if not line.startswith("data:") or line[5:].strip() == "[DONE]":
+                    continue
+                chunk = json.loads(line[5:])
+                model = chunk.get("model", model)
+                usage = chunk.get("usage") or chunk.get("x_groq", {}).get("usage") or usage
+                for choice in chunk.get("choices", []):
+                    delta = choice.get("delta", {})
+                    refusal += delta.get("refusal") or ""
+                    if text := delta.get("content"):
+                        parts.append(text)
+                        yield text
+        if refusal and not parts:
+            raise LLMRefusal(refusal)
+        yield Completion("".join(parts).strip(), model, self._usage(usage))
+
+
+class _translate_openai_errors:
+    def __init__(self, provider: str):
+        self.provider = provider
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        if exc is None or isinstance(exc, LLMError | GeneratorExit):
+            return False
+        if isinstance(exc, httpx.TimeoutException):
+            raise LLMTimeout(f"The {self.provider} request timed out.") from exc
+        if isinstance(exc, httpx.HTTPStatusError):
+            status = exc.response.status_code
+            if status in (401, 403):
+                raise LLMNotConfigured(f"{self.provider} API key is missing or invalid.") from exc
+            if status == 429:
+                raise LLMRateLimited(f"{self.provider} rate-limited the request.") from exc
+            try:
+                detail = exc.response.json()["error"]["message"]
+            except Exception:
+                detail = exc.response.text[:300]
+            raise LLMError(f"{self.provider} error ({status}): {detail}") from exc
+        if isinstance(exc, httpx.HTTPError):
+            raise LLMError(f"Could not reach {self.provider}: {exc}") from exc
+        return False
+
+
 class _translate_http_errors:
     def __enter__(self):
         return self
@@ -226,4 +349,15 @@ def make_llm(provider: str, model: str, **kwargs) -> LLMClient:
             temperature=kwargs.get("temperature", 0.1),
             timeout_s=kwargs.get("timeout_s", 60),
         )
-    raise ValueError(f"Unknown LLM_PROVIDER '{provider}'. Use 'anthropic' or 'ollama'.")
+    if provider in ("openai", "groq"):
+        groq = provider == "groq"
+        return OpenAICompatibleLLM(
+            model,
+            api_key=kwargs.get("api_key"),
+            base_url=GROQ_URL if groq else kwargs.get("openai_base_url") or OPENAI_URL,
+            temperature=kwargs.get("temperature", 0.1),
+            timeout_s=kwargs.get("timeout_s", 30),
+            provider="Groq" if groq else "OpenAI",
+            stream_usage=not groq,
+        )
+    raise ValueError(f"Unknown LLM_PROVIDER '{provider}'. Use 'anthropic', 'openai', 'groq' or 'ollama'.")

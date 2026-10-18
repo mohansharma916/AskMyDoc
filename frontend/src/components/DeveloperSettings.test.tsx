@@ -8,11 +8,12 @@ import DeveloperSettings from "./DeveloperSettings";
 const settings: RuntimeSettings = {
   llm_provider: "anthropic",
   llm_model: "claude-opus-5-5",
-  llm_api_key_set: true,
+  api_keys_set: { anthropic: true, openai: false, groq: false },
   llm_effort: "low",
   llm_temperature: 0.1,
   llm_timeout_s: 30,
   ollama_url: "http://localhost:11434",
+  openai_base_url: "https://api.openai.com/v1",
   rerank_model: "BAAI/bge-reranker-base",
   prompt_version: "answer_v1",
   chunk_size: 512,
@@ -61,13 +62,47 @@ it("shows Ollama fields only for the Ollama provider and never echoes the key", 
   mockFetch({ "/settings": info() });
   renderWithQuery(<DeveloperSettings open onClose={() => {}} />);
 
-  expect(await screen.findByLabelText("API key")).toHaveValue("");
+  expect(await screen.findByLabelText("Anthropic API key")).toHaveValue("");
   expect(screen.queryByLabelText("Ollama URL")).not.toBeInTheDocument();
 
   await userEvent.selectOptions(screen.getByLabelText("Provider"), "ollama");
   expect(screen.getByLabelText("Ollama URL")).toBeInTheDocument();
-  expect(screen.queryByLabelText("API key")).not.toBeInTheDocument();
+  expect(screen.queryByLabelText(/API key/)).not.toBeInTheDocument();
   expect(screen.queryByLabelText("Effort")).not.toBeInTheDocument();
+});
+
+it("switches to Groq with its own key and a Groq model", async () => {
+  const fetch = mockFetch({
+    "/settings": (_url: string, init?: RequestInit) =>
+      init?.method === "PATCH" ? info({ llm_provider: "groq", llm_model: "llama-3.3-70b-versatile" }) : info(),
+    "/health": {},
+  });
+  renderWithQuery(<DeveloperSettings open onClose={() => {}} />);
+
+  await userEvent.selectOptions(await screen.findByLabelText("Provider"), "groq");
+  expect(screen.getByLabelText(/^Model/)).toHaveValue("llama-3.3-70b-versatile");
+  expect(screen.getByLabelText("Temperature")).toBeInTheDocument();
+  expect(screen.queryByLabelText("Base URL")).not.toBeInTheDocument();
+  await userEvent.type(screen.getByLabelText("Groq API key"), "gsk-test");
+  await userEvent.click(screen.getByRole("button", { name: "Save" }));
+
+  await screen.findByText(/Saved/);
+  const patch = fetch.mock.calls.find(([, init]) => init?.method === "PATCH")!;
+  expect(JSON.parse(String(patch[1]!.body))).toEqual({
+    llm_provider: "groq",
+    llm_model: "llama-3.3-70b-versatile",
+    groq_api_key: "gsk-test",
+  });
+});
+
+it("shows a base URL for OpenAI", async () => {
+  mockFetch({ "/settings": info() });
+  renderWithQuery(<DeveloperSettings open onClose={() => {}} />);
+
+  await userEvent.selectOptions(await screen.findByLabelText("Provider"), "openai");
+  expect(screen.getByLabelText(/^Model/)).toHaveValue("gpt-5-mini");
+  expect(screen.getByLabelText("Base URL")).toHaveValue("https://api.openai.com/v1");
+  expect(screen.getByLabelText("OpenAI API key")).toHaveAttribute("placeholder", "Not set");
 });
 
 it("shows server validation errors", async () => {

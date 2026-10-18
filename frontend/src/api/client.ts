@@ -56,14 +56,17 @@ export interface Health {
 
 export type Rating = "helpful" | "not_helpful";
 
+export type LLMProvider = "anthropic" | "openai" | "groq" | "ollama";
+
 export interface RuntimeSettings {
-  llm_provider: "anthropic" | "ollama";
+  llm_provider: LLMProvider;
   llm_model: string;
-  llm_api_key_set: boolean;
+  api_keys_set: Record<string, boolean>;
   llm_effort: "low" | "medium" | "high" | "xhigh" | "max";
   llm_temperature: number;
   llm_timeout_s: number;
   ollama_url: string;
+  openai_base_url: string;
   rerank_model: string;
   prompt_version: string;
   chunk_size: number;
@@ -74,8 +77,12 @@ export interface RuntimeSettings {
   max_upload_mb: number;
 }
 
-/** PATCH body: any subset of the runtime settings; `llm_api_key` is write-only ("" clears it). */
-export type SettingsUpdate = Partial<Omit<RuntimeSettings, "llm_api_key_set">> & { llm_api_key?: string };
+/** Write-only setting holding each provider's API key ("" clears it). */
+export const API_KEY_FIELDS = { anthropic: "llm_api_key", openai: "openai_api_key", groq: "groq_api_key" } as const;
+type ApiKeyField = (typeof API_KEY_FIELDS)[keyof typeof API_KEY_FIELDS];
+
+/** PATCH body: any subset of the runtime settings, plus write-only API keys. */
+export type SettingsUpdate = Partial<Omit<RuntimeSettings, "api_keys_set">> & Partial<Record<ApiKeyField, string>>;
 
 export interface SettingsInfo {
   editable: boolean;

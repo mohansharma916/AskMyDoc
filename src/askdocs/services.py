@@ -16,7 +16,18 @@ from .retrieve.hybrid import HybridRetriever
 from .retrieve.vector import QdrantIndex, make_client
 from .store.db import Database
 
-_LLM = {"llm_provider", "llm_model", "llm_api_key", "llm_effort", "llm_temperature", "llm_timeout_s", "ollama_url"}
+_LLM = {
+    "llm_provider",
+    "llm_model",
+    "llm_api_key",
+    "openai_api_key",
+    "openai_base_url",
+    "groq_api_key",
+    "llm_effort",
+    "llm_temperature",
+    "llm_timeout_s",
+    "ollama_url",
+}
 
 # Settings that can change while the app runs, and the components built from them.
 # Changing one rebuilds only those components; requests already in flight finish on the old ones.
@@ -111,11 +122,12 @@ class Services:
         return make_llm(
             s.llm_provider,
             s.llm_model,
-            api_key=s.llm_api_key,
+            api_key=s.provider_api_key(),
             effort=s.llm_effort,
             temperature=s.llm_temperature,
             timeout_s=s.llm_timeout_s,
             ollama_url=s.ollama_url,
+            openai_base_url=s.openai_base_url,
         )
 
     @cached_property

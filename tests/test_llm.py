@@ -15,6 +15,7 @@ from askdocs.generate.llm import (
     LLMRefusal,
     LLMTimeout,
     OllamaLLM,
+    OpenAICompatibleLLM,
     Usage,
     cost_usd,
     make_llm,
@@ -139,5 +140,95 @@ def test_ollama_errors():
 def test_make_llm():
     assert isinstance(make_llm("anthropic", "claude-opus-5-5", api_key="k"), AnthropicLLM)
     assert isinstance(make_llm("ollama", "llama3.1"), OllamaLLM)
+    groq = make_llm("groq", "llama-3.3-70b-versatile", api_key="gsk")
+    assert isinstance(groq, OpenAICompatibleLLM) and str(groq._http.base_url) == "https://api.groq.com/openai/v1/"
+    openai = make_llm("openai", "gpt-5-mini", api_key="sk", openai_base_url="http://localhost:1234/v1/")
+    assert str(openai._http.base_url) == "http://localhost:1234/v1/"
     with pytest.raises(ValueError):
-        make_llm("openai", "x")
+        make_llm("mistral", "x")
+
+
+def openai_llm(handler, **kwargs) -> OpenAICompatibleLLM:
+    llm = OpenAICompatibleLLM("gpt-test", api_key="sk-test", **kwargs)
+    llm._http = httpx.Client(
+        base_url="http://openai", headers=llm._http.headers, transport=httpx.MockTransport(handler)
+    )
+    return llm
+
+
+def sse(*chunks) -> str:
+    return "".join(f"data: {json.dumps(c)}\n\n" for c in chunks) + "data: [DONE]\n\n"
+
+
+def test_openai_complete_and_stream():
+    def handler(request):
+        assert request.url.path == "/chat/completions"
+        assert request.headers["Authorization"] == "Bearer sk-test"
+        body = json.loads(request.content)
+        assert body["messages"][0] == {"role": "system", "content": "sys"}
+        assert body["temperature"] == 0.1 and body["max_completion_tokens"] == 8000
+        usage = {"prompt_tokens": 7, "completion_tokens": 3}
+        if not body["stream"]:
+            return httpx.Response(
+                200, json={"model": "gpt-test-1", "choices": [{"message": {"content": " Hi [1]. "}}], "usage": usage}
+            )
+        assert body["stream_options"] == {"include_usage": True}
+        return httpx.Response(
+            200,
+            content=sse(
+                {"choices": [{"delta": {"role": "assistant", "content": ""}}]},
+                {"choices": [{"delta": {"content": "Hi"}}]},
+                {"choices": [{"delta": {"content": " [1]."}}]},
+                {"choices": [], "usage": usage},
+            ),
+        )
+
+    llm = openai_llm(handler)
+    assert llm.complete("sys", []) == Completion("Hi [1].", "gpt-test-1", Usage(7, 3, None))
+    items = list(llm.stream("sys", []))
+    assert items[:2] == ["Hi", " [1]."] and items[2] == Completion("Hi [1].", "gpt-test", Usage(7, 3, None))
+
+
+def test_groq_stream_reads_usage_from_x_groq():
+    def handler(request):
+        assert "stream_options" not in json.loads(request.content)
+        usage = {"prompt_tokens": 4, "completion_tokens": 1}
+        return httpx.Response(200, content=sse({"choices": [{"delta": {"content": "Hi"}}], "x_groq": {"usage": usage}}))
+
+    items = list(openai_llm(handler, provider="Groq", stream_usage=False).stream("s", []))
+    assert items[-1].usage == Usage(4, 1, None)
+
+
+def test_openai_drops_temperature_when_model_rejects_it():
+    bodies = []
+
+    def handler(request):
+        bodies.append(json.loads(request.content))
+        if "temperature" in bodies[-1]:
+            return httpx.Response(400, json={"error": {"message": "Unsupported value: 'temperature'"}})
+        return httpx.Response(200, json={"choices": [{"message": {"content": "ok"}}]})
+
+    llm = openai_llm(handler)
+    assert llm.complete("s", []).text == "ok"
+    assert len(bodies) == 2 and llm.temperature is None
+
+
+def test_openai_errors_and_refusal():
+    with pytest.raises(LLMNotConfigured, match="No OpenAI API key"):
+        OpenAICompatibleLLM("gpt-test", api_key="").complete("s", [])
+    with pytest.raises(LLMNotConfigured):
+        openai_llm(lambda r: httpx.Response(401)).complete("s", [])
+    with pytest.raises(LLMRateLimited):
+        openai_llm(lambda r: httpx.Response(429)).complete("s", [])
+    with pytest.raises(LLMError, match="model_not_found"):
+        openai_llm(lambda r: httpx.Response(404, json={"error": {"message": "model_not_found"}})).complete("s", [])
+    with pytest.raises(LLMRefusal, match="can't help"):
+        openai_llm(
+            lambda r: httpx.Response(200, json={"choices": [{"message": {"content": None, "refusal": "I can't help"}}]})
+        ).complete("s", [])
+
+    def slow(request):
+        raise httpx.ReadTimeout("slow", request=request)
+
+    with pytest.raises(LLMTimeout):
+        list(openai_llm(slow).stream("s", []))

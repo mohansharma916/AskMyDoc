@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type FormEvent, useEffect, useRef, useState } from "react";
-import { api, type RuntimeSettings, type SettingsInfo, type SettingsUpdate } from "../api/client";
+import { API_KEY_FIELDS, api, type LLMProvider, type RuntimeSettings, type SettingsInfo, type SettingsUpdate } from "../api/client";
 
-type Key = Exclude<keyof RuntimeSettings, "llm_api_key_set">;
+type Key = Exclude<keyof RuntimeSettings, "api_keys_set">;
 type Draft = Record<Key, string>;
 
 interface Field {
@@ -17,14 +17,26 @@ interface Field {
   when?: (d: Draft) => boolean;
 }
 
-const MODELS = ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"];
+const PROVIDERS: Record<LLMProvider, { label: string; models: string[] }> = {
+  anthropic: { label: "Anthropic", models: ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"] },
+  openai: { label: "OpenAI", models: ["gpt-5-mini", "gpt-5", "gpt-4.1", "gpt-4.1-mini"] },
+  groq: { label: "Groq", models: ["llama-3.3-70b-versatile", "openai/gpt-oss-120b", "llama-3.1-8b-instant"] },
+  ollama: { label: "Ollama", models: ["llama3.1"] },
+};
+const hasKey = (p: string): p is keyof typeof API_KEY_FIELDS => p in API_KEY_FIELDS;
 
 const SECTIONS: { title: string; note?: string; fields: Field[] }[] = [
   {
     title: "Language model",
     fields: [
-      { key: "llm_provider", label: "Provider", help: "Claude via the Anthropic API, or a local Ollama model.", kind: "select", options: ["anthropic", "ollama"] },
-      { key: "llm_model", label: "Model", help: "Model id, e.g. claude-opus-5-5 or llama3.1.", kind: "text" },
+      {
+        key: "llm_provider",
+        label: "Provider",
+        help: "Claude, OpenAI or Groq over their APIs, or a local Ollama model.",
+        kind: "select",
+        options: Object.keys(PROVIDERS),
+      },
+      { key: "llm_model", label: "Model", help: "Model id; pick a suggestion or type any model the provider offers.", kind: "text" },
       {
         key: "llm_effort",
         label: "Effort",
@@ -36,12 +48,19 @@ const SECTIONS: { title: string; note?: string; fields: Field[] }[] = [
       {
         key: "llm_temperature",
         label: "Temperature",
-        help: "Sampling temperature (Ollama only).",
+        help: "Sampling temperature. Ignored by models that don't support it.",
         kind: "number",
         min: 0,
         max: 2,
         step: 0.05,
-        when: (d) => d.llm_provider === "ollama",
+        when: (d) => d.llm_provider !== "anthropic",
+      },
+      {
+        key: "openai_base_url",
+        label: "Base URL",
+        help: "OpenAI's API, or any OpenAI-compatible server (vLLM, LM Studio, Together…).",
+        kind: "text",
+        when: (d) => d.llm_provider === "openai",
       },
       { key: "ollama_url", label: "Ollama URL", help: "Base URL of the Ollama server.", kind: "text", when: (d) => d.llm_provider === "ollama" },
       { key: "llm_timeout_s", label: "Timeout (s)", help: "Per-request LLM timeout.", kind: "number", min: 1, max: 600, step: 1 },
@@ -115,7 +134,11 @@ function SettingsForm({ info, onClose }: { info: SettingsInfo; onClose: () => vo
   const save = useMutation({ mutationFn: api.updateSettings, onSuccess: applied });
   const reset = useMutation({ mutationFn: api.resetSettings, onSuccess: applied });
 
-  const pending: SettingsUpdate = { ...changes(draft, info.settings), ...(apiKey ? { llm_api_key: apiKey } : {}) };
+  const provider = draft.llm_provider as LLMProvider;
+  const pending: SettingsUpdate = {
+    ...changes(draft, info.settings),
+    ...(apiKey && hasKey(provider) ? { [API_KEY_FIELDS[provider]]: apiKey } : {}),
+  };
   const dirty = Object.keys(pending).length > 0;
   const busy = save.isPending || reset.isPending;
   const error = save.error ?? reset.error;
@@ -123,7 +146,15 @@ function SettingsForm({ info, onClose }: { info: SettingsInfo; onClose: () => vo
 
   const set = (key: Key, value: string) => {
     setSaved(false);
-    setDraft((d) => ({ ...d, [key]: value }));
+    if (key === "llm_provider") {
+      // Keep the saved model when switching back; otherwise suggest the new provider's default.
+      const p = value as LLMProvider;
+      const model = p === info.settings.llm_provider ? info.settings.llm_model : PROVIDERS[p].models[0];
+      setApiKey("");
+      setDraft((d) => ({ ...d, llm_provider: p, llm_model: model }));
+    } else {
+      setDraft((d) => ({ ...d, [key]: value }));
+    }
   };
 
   const submit = (e: FormEvent) => {
@@ -165,7 +196,7 @@ function SettingsForm({ info, onClose }: { info: SettingsInfo; onClose: () => vo
                       <select id={id} value={draft[f.key]} onChange={(e) => set(f.key, e.target.value)} className={inputClass}>
                         {options?.map((o) => (
                           <option key={o} value={o}>
-                            {o}
+                            {f.key === "llm_provider" ? PROVIDERS[o as LLMProvider].label : o}
                           </option>
                         ))}
                       </select>
@@ -178,7 +209,7 @@ function SettingsForm({ info, onClose }: { info: SettingsInfo; onClose: () => vo
                         max={f.max}
                         step={f.step}
                         value={draft[f.key]}
-                        list={f.key === "llm_model" && draft.llm_provider === "anthropic" ? "dev-models" : undefined}
+                        list={f.key === "llm_model" ? "dev-models" : undefined}
                         onChange={(e) => set(f.key, e.target.value)}
                         className={inputClass}
                       />
@@ -188,30 +219,36 @@ function SettingsForm({ info, onClose }: { info: SettingsInfo; onClose: () => vo
                 );
               })}
 
-            {section.title === "Language model" && draft.llm_provider === "anthropic" && (
+            {section.title === "Language model" && hasKey(provider) && (
               <div>
-                <label htmlFor="dev-llm_api_key" className="mb-1 block text-sm font-medium">
-                  API key
+                <label htmlFor="dev-api-key" className="mb-1 block text-sm font-medium">
+                  {PROVIDERS[provider].label} API key
                 </label>
                 <input
-                  id="dev-llm_api_key"
+                  id="dev-api-key"
                   type="password"
                   autoComplete="off"
                   value={apiKey}
-                  placeholder={info.settings.llm_api_key_set ? "•••••••• (set — type to replace)" : "Not set — uses ANTHROPIC_API_KEY"}
+                  placeholder={
+                    info.settings.api_keys_set[provider]
+                      ? "•••••••• (set — type to replace)"
+                      : `Not set${provider === "anthropic" ? " — uses ANTHROPIC_API_KEY" : ""}`
+                  }
                   onChange={(e) => {
                     setSaved(false);
                     setApiKey(e.target.value);
                   }}
                   className={inputClass}
                 />
-                <p className="mt-1 text-xs text-slate-500">Write-only: the server never sends the key back.</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  Used only for {PROVIDERS[provider].label}. Write-only: the server never sends it back.
+                </p>
               </div>
             )}
           </fieldset>
         ))}
         <datalist id="dev-models">
-          {MODELS.map((m) => (
+          {PROVIDERS[provider].models.map((m) => (
             <option key={m} value={m} />
           ))}
         </datalist>

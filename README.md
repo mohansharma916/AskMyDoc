@@ -44,7 +44,7 @@ uvicorn askdocs.api.main:app --reload             # http://localhost:8000/docs
 cd frontend && cp .env.example .env && npm install && npm run dev   # http://localhost:5173
 ```
 
-To use a local model instead of Claude, set `LLM_PROVIDER=ollama` and `LLM_MODEL=<a model you've pulled>`.
+To use another model instead of Claude, set `LLM_PROVIDER` to `openai`, `groq` or `ollama`, set `LLM_MODEL`, and set that provider's key (`OPENAI_API_KEY` or `GROQ_API_KEY`; Ollama needs none). You can also switch provider, model and key at runtime from **Developer settings** in the UI.
 
 ## How a question is answered
 
@@ -142,7 +142,8 @@ Every setting has a default in [src/askdocs/config.py](src/askdocs/config.py) an
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `LLM_PROVIDER` / `LLM_MODEL` / `LLM_API_KEY` | `anthropic` / `claude-opus-5-5` / – | Generation backend (`anthropic` or `ollama`) |
+| `LLM_PROVIDER` / `LLM_MODEL` / `LLM_API_KEY` | `anthropic` / `claude-opus-5-5` / – | Generation backend (`anthropic`, `openai`, `groq` or `ollama`); `LLM_API_KEY` is the Anthropic key |
+| `OPENAI_API_KEY` / `OPENAI_BASE_URL` / `GROQ_API_KEY` | – / `https://api.openai.com/v1` / – | Keys for the OpenAI and Groq providers; the base URL can point at any OpenAI-compatible server |
 | `LLM_EFFORT` | `low` | Claude effort level, kept low for the latency budget |
 | `EMBED_MODEL` / `RERANK_MODEL` | `BAAI/bge-small-en-v1.5` / `BAAI/bge-reranker-base` | Local models |
 | `QDRANT_URL` | `http://localhost:6333` | Vector DB (`:memory:` or a local path also work) |

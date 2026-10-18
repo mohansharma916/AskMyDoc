@@ -126,10 +126,16 @@ def test_aggregate_citation_precision():
         ("anthropic", "k", None, True),
         ("anthropic", "", "e", True),
         ("ollama", "", None, True),
+        ("groq", "", "e", False),  # ANTHROPIC_API_KEY is not a Groq key
+        ("groq", "k", None, True),
+        ("openai", "k", None, True),
     ],
 )
 def test_has_llm_credentials(monkeypatch, provider, key, env, expected):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     if env:
         monkeypatch.setenv("ANTHROPIC_API_KEY", env)
-    assert has_llm_credentials(SimpleNamespace(llm_provider=provider, llm_api_key=key)) is expected
+    from askdocs.config import API_KEY_FIELDS, Settings
+
+    keys = dict.fromkeys(API_KEY_FIELDS.values(), "") | {API_KEY_FIELDS.get(provider, "llm_api_key"): key}
+    assert has_llm_credentials(Settings(llm_provider=provider, **keys)) is expected
