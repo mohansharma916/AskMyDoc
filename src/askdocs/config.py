@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     max_upload_mb: int = 25
     ingest_root: Path = PROJECT_ROOT / "data"  # POST /ingest {path} may only read below this folder
     warmup_models: bool = True  # load embedding + reranker models at startup
+    dev_settings_enabled: bool = True  # allow PATCH /settings (the UI's Developer settings); disable when exposed
 
     # Tracing (OTLP/HTTP: Phoenix at :6006 by default; Langfuse via its OTLP endpoint + OTEL_EXPORTER_OTLP_HEADERS)
     tracing_enabled: bool = False

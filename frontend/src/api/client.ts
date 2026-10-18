@@ -56,6 +56,35 @@ export interface Health {
 
 export type Rating = "helpful" | "not_helpful";
 
+export interface RuntimeSettings {
+  llm_provider: "anthropic" | "ollama";
+  llm_model: string;
+  llm_api_key_set: boolean;
+  llm_effort: "low" | "medium" | "high" | "xhigh" | "max";
+  llm_temperature: number;
+  llm_timeout_s: number;
+  ollama_url: string;
+  rerank_model: string;
+  prompt_version: string;
+  chunk_size: number;
+  chunk_overlap: number;
+  retrieve_k: number;
+  rerank_k: number;
+  abstain_threshold: number;
+  max_upload_mb: number;
+}
+
+/** PATCH body: any subset of the runtime settings; `llm_api_key` is write-only ("" clears it). */
+export type SettingsUpdate = Partial<Omit<RuntimeSettings, "llm_api_key_set">> & { llm_api_key?: string };
+
+export interface SettingsInfo {
+  editable: boolean;
+  settings: RuntimeSettings;
+  defaults: RuntimeSettings;
+  restart_required: Record<string, string | number | boolean>;
+  prompt_versions: string[];
+}
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -95,9 +124,12 @@ export const api = {
     return request<IngestJob>("/ingest", { method: "POST", body: form });
   },
   ingestJob: (jobId: string) => request<IngestJob>(`/ingest/${jobId}`),
-  ask: (question: string, topK = 5) => request<AskResponse>("/ask", json("POST", { question, top_k: topK })),
+  ask: (question: string, topK?: number) => request<AskResponse>("/ask", json("POST", { question, top_k: topK })),
   feedback: (queryId: string, rating: Rating) =>
     request<{ query_id: string; rating: Rating }>("/feedback", json("POST", { query_id: queryId, rating })),
+  settings: () => request<SettingsInfo>("/settings"),
+  updateSettings: (changes: SettingsUpdate) => request<SettingsInfo>("/settings", json("PATCH", changes)),
+  resetSettings: () => request<SettingsInfo>("/settings/reset", { method: "POST" }),
 };
 
 // --- Streaming ----------------------------------------------------------------
@@ -108,8 +140,8 @@ export type StreamEvent =
   | { type: "retry"; reason: string }
   | { type: "done"; result: AskResponse };
 
-/** POST /ask/stream and yield parsed events until the stream ends or `signal` aborts. */
-export async function* streamAsk(question: string, signal?: AbortSignal, topK = 5): AsyncGenerator<StreamEvent> {
+/** POST /ask/stream and yield parsed events until the stream ends or `signal` aborts. Omitting topK uses RERANK_K. */
+export async function* streamAsk(question: string, signal?: AbortSignal, topK?: number): AsyncGenerator<StreamEvent> {
   const res = await fetch(`${BASE}/ask/stream`, { ...json("POST", { question, top_k: topK }), signal });
   if (!res.ok || !res.body) {
     const err = (await res.json().catch(() => ({})))?.error ?? {};

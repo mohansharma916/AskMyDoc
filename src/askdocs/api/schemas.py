@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class ErrorDetail(BaseModel):
@@ -65,7 +65,7 @@ class Filters(BaseModel):
 
 class AskRequest(BaseModel):
     question: str = Field(max_length=2000)
-    top_k: int = Field(5, ge=1, le=10)
+    top_k: int | None = Field(None, ge=1, le=20, description="Chunks shown to the LLM; defaults to RERANK_K")
     filters: Filters | None = None
 
     @field_validator("question")
@@ -137,3 +137,59 @@ class HealthResponse(BaseModel):
     llm: LLMStatus
     documents: int
     chunks: int
+
+
+# --- Developer settings -------------------------------------------------------
+
+LLMProvider = Literal["anthropic", "ollama"]
+LLMEffort = Literal["low", "medium", "high", "xhigh", "max"]
+
+
+class RuntimeSettings(BaseModel):
+    """Settings that apply to the next request without a restart (see services.RUNTIME_SETTINGS)."""
+
+    llm_provider: LLMProvider
+    llm_model: str
+    llm_api_key_set: bool  # the key itself is write-only
+    llm_effort: LLMEffort
+    llm_temperature: float
+    llm_timeout_s: float
+    ollama_url: str
+    rerank_model: str
+    prompt_version: str
+    chunk_size: int
+    chunk_overlap: int
+    retrieve_k: int
+    rerank_k: int
+    abstain_threshold: float
+    max_upload_mb: int
+
+
+class SettingsUpdate(BaseModel):
+    """Partial update; omitted fields keep their value. An empty llm_api_key clears it."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    llm_provider: LLMProvider | None = None
+    llm_model: str | None = Field(None, min_length=1, max_length=200)
+    llm_api_key: str | None = Field(None, max_length=500)
+    llm_effort: LLMEffort | None = None
+    llm_temperature: float | None = Field(None, ge=0, le=2)
+    llm_timeout_s: float | None = Field(None, gt=0, le=600)
+    ollama_url: str | None = Field(None, pattern=r"^https?://\S+$", max_length=500)
+    rerank_model: str | None = Field(None, min_length=1, max_length=200)
+    prompt_version: str | None = Field(None, pattern=r"^[\w.-]+$", max_length=100)
+    chunk_size: int | None = Field(None, ge=64, le=4096)
+    chunk_overlap: int | None = Field(None, ge=0, le=1024)
+    retrieve_k: int | None = Field(None, ge=1, le=100)
+    rerank_k: int | None = Field(None, ge=1, le=20)
+    abstain_threshold: float | None = Field(None, ge=0, le=1)
+    max_upload_mb: int | None = Field(None, ge=1, le=500)
+
+
+class SettingsResponse(BaseModel):
+    editable: bool  # DEV_SETTINGS_ENABLED
+    settings: RuntimeSettings
+    defaults: RuntimeSettings  # values the server started with
+    restart_required: dict[str, str | int | float | bool]  # shown read-only: change in .env and restart
+    prompt_versions: list[str]
