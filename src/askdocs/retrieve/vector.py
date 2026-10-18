@@ -56,10 +56,15 @@ class QdrantIndex:
             )
 
     def delete_document(self, doc_id: str) -> None:
+        self.delete_documents([doc_id])
+
+    def delete_documents(self, doc_ids: list[str]) -> None:
+        if not doc_ids:
+            return
         self.ensure_collection()
         self.client.delete(
             self.collection,
-            points_selector=models.FilterSelector(filter=_doc_filter([doc_id])),
+            points_selector=models.FilterSelector(filter=_doc_filter(doc_ids)),
             wait=True,
         )
 

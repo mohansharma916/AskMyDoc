@@ -28,15 +28,33 @@ def warm_up(services: Services) -> None:
         log.exception("model warm-up failed; models will load on first request")
 
 
+def sweep_sessions(services: Services, jobs: JobStore, stop: threading.Event) -> None:
+    """Every SESSION_SWEEP_S, delete sessions idle for longer than SESSION_TTL_S."""
+    while not stop.wait(services.settings.session_sweep_s):
+        try:
+            busy = jobs.active_sessions()
+            for session_id in busy:  # a long ingest keeps its session alive
+                services.sessions.get(session_id, touch=True)
+            services.sessions.sweep(keep=busy)
+        except Exception:
+            log.exception("session sweep failed")
+
+
 def create_app(services: Services | None = None) -> FastAPI:
     services = services or Services()
     setup_tracing(services.settings.tracing_enabled, services.settings.otel_endpoint)
 
     @asynccontextmanager
-    async def lifespan(_: FastAPI):
+    async def lifespan(app: FastAPI):
         if services.settings.warmup_models:
             threading.Thread(target=warm_up, args=(services,), name="warmup", daemon=True).start()
+        stop = threading.Event()
+        sweeper = threading.Thread(
+            target=sweep_sessions, args=(services, app.state.jobs, stop), name="session-sweep", daemon=True
+        )
+        sweeper.start()
         yield
+        stop.set()
 
     app = FastAPI(
         lifespan=lifespan,

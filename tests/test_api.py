@@ -11,6 +11,7 @@ def client(make_services, tmp_path):
     with TestClient(app, raise_server_exceptions=False) as c:
         c.services = services
         c.jobs = app.state.jobs
+        c.headers["X-Session-Id"] = c.post("/api/v1/sessions").json()["session_id"]  # like the browser does
         yield c
 
 
@@ -32,18 +33,21 @@ def test_upload_ingest_job_and_documents(client):
     assert done["counts"] == {"indexed": 1, "updated": 0, "unchanged": 0, "failed": 0, "chunks": 1}
 
     docs = client.get("/api/v1/documents").json()["documents"]
-    assert [d["doc_id"] for d in docs] == ["it", "leave", "travel"]
+    travel = done["results"][0]["doc_id"]
+    assert travel.startswith("travel--")  # session uploads carry a session tag
+    assert [d["doc_id"] for d in docs] == ["it", "leave", travel]
     assert docs[1]["chunks"] == 2 and docs[1]["title"] == "Leave"
     assert docs[0]["source_type"] == "preloaded"
     assert docs[2]["source_type"] == "user_upload"
 
-    detail = client.get("/api/v1/documents/travel").json()
-    assert detail["doc_id"] == "travel" and detail["source_type"] == "user_upload"
+    detail = client.get(f"/api/v1/documents/{travel}").json()
+    assert detail["doc_id"] == travel and detail["source_type"] == "user_upload"
     assert len(detail["chunks"]) == 1 and "Book economy." in detail["chunks"][0]["text"]
     assert "Book economy." in detail["full_text"]
-    assert detail["has_file"] and detail["file_url"] == "/api/v1/documents/travel/file"
+    sid = client.headers["X-Session-Id"]
+    assert detail["has_file"] and detail["file_url"] == f"/api/v1/documents/{travel}/file?session_id={sid}"
 
-    file_res = client.get("/api/v1/documents/travel/file")
+    file_res = client.get(detail["file_url"], headers={"X-Session-Id": ""})  # works from an <iframe>, no header
     assert file_res.status_code == 200
     assert b"Book economy." in file_res.content
 
@@ -70,7 +74,7 @@ def test_ingest_errors(client):
 
 
 def test_failed_job(client, monkeypatch):
-    def boom(files):
+    def boom(files, session_id=None):
         raise RuntimeError("qdrant down")
 
     monkeypatch.setattr(client.services.indexer, "ingest_files", boom)
@@ -81,10 +85,16 @@ def test_failed_job(client, monkeypatch):
 
 
 def test_delete_document(client):
-    assert client.delete("/api/v1/documents/it").status_code == 204
-    r = client.delete("/api/v1/documents/it")
+    job = client.post("/api/v1/ingest", files=[("files", ("mine.txt", b"My own notes.", "text/plain"))]).json()
+    client.jobs.wait()
+    doc_id = client.get(f"/api/v1/ingest/{job['job_id']}").json()["results"][0]["doc_id"]
+    assert client.delete(f"/api/v1/documents/{doc_id}").status_code == 204
+    r = client.delete(f"/api/v1/documents/{doc_id}")
     assert r.status_code == 404 and r.json()["error"]["code"] == "not_found"
     assert "trace_id" in r.json()["error"]
+
+    r = client.delete("/api/v1/documents/it")  # shared documents can't be deleted by a session
+    assert r.status_code == 403 and r.json()["error"]["code"] == "forbidden"
 
 
 def test_openapi_docs(client):

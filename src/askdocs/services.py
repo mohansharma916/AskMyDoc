@@ -14,6 +14,7 @@ from .retrieve.bm25 import BM25Index
 from .retrieve.embeddings import Embedder, SentenceTransformerEmbedder
 from .retrieve.hybrid import HybridRetriever
 from .retrieve.vector import QdrantIndex, make_client
+from .sessions import SessionStore
 from .store.db import Database
 
 _LLM = {
@@ -36,6 +37,7 @@ RUNTIME_SETTINGS: dict[str, set[str]] = {
     "prompt": {"prompt_version"},
     "reranker": {"rerank_model"},
     "indexer": {"chunk_size", "chunk_overlap"},
+    "sessions": {"chunk_size", "chunk_overlap"},  # holds the indexer
     "pipeline": _LLM | {"prompt_version", "rerank_model", "retrieve_k", "rerank_k", "abstain_threshold"},
     "": {"max_upload_mb"},  # read per request, nothing to rebuild
 }
@@ -107,6 +109,11 @@ class Services:
             chunk_size=self.settings.chunk_size,
             chunk_overlap=self.settings.chunk_overlap,
         )
+
+    @cached_property
+    def sessions(self) -> SessionStore:
+        s = self.settings
+        return SessionStore(self.db, self.indexer, s.ingest_root / "uploads" / "sessions", s.session_ttl_s)
 
     @cached_property
     def retriever(self) -> HybridRetriever:

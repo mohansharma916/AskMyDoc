@@ -59,11 +59,13 @@ class AskResult:
     contexts: list[Candidate] = field(default_factory=list, repr=False)  # chunks shown to the LLM
     ranked_chunk_ids: list[str] = field(default_factory=list, repr=False)  # full ranking, for eval metrics
     trace_id: str | None = None  # OpenTelemetry trace id, when tracing is enabled
+    session_id: str | None = field(default=None, repr=False)  # browser session that asked, for cleanup
 
     def to_dict(self) -> dict:
         data = asdict(self)
         data.pop("contexts")
         data.pop("ranked_chunk_ids")
+        data.pop("session_id")
         return data
 
 
@@ -175,6 +177,7 @@ class AskPipeline:
         abstain_reason: str | None,
         ranked: list[Candidate],
         root: Span,
+        session_id: str | None = None,
     ) -> AskResult:
         latency["total"] = _ms(started)
         abstained = abstain_reason is not None
@@ -192,6 +195,7 @@ class AskPipeline:
             contexts=chunks,
             ranked_chunk_ids=[c.chunk_id for c in ranked],
             trace_id=trace_id_hex(root),
+            session_id=session_id,
         )
         root.set_attribute("abstained", abstained)
         root.set_attribute("input_tokens", usage.input_tokens)
@@ -219,6 +223,7 @@ class AskPipeline:
                     model=result.model,
                     prompt_version=result.prompt_version,
                     otel_trace_id=result.trace_id,
+                    session_id=result.session_id,
                 )
             )
 
@@ -239,18 +244,23 @@ class AskPipeline:
         top_k: int | None = None,
         doc_ids: list[str] | None = None,
         options: PipelineOptions | None = None,
+        session_id: str | None = None,
     ) -> AskResult:
         options = options or PipelineOptions()
         query_id = new_query_id()
         with span("ask", query_id=query_id, mode=options.mode, rerank=options.rerank) as root:
-            return self._ask(question, top_k, doc_ids, options, query_id, root)
+            return self._ask(question, top_k, doc_ids, options, query_id, root, session_id)
 
-    def _ask(self, question, top_k, doc_ids, options: PipelineOptions, query_id: str, root: Span) -> AskResult:
+    def _ask(
+        self, question, top_k, doc_ids, options: PipelineOptions, query_id: str, root: Span, session_id=None
+    ) -> AskResult:
         started, latency, usage = time.perf_counter(), {}, Usage()
         ranked = self.retrieve(question, doc_ids, options, latency, root)
         chunks = ranked[: top_k or self.rerank_k]
         if reason := self.abstain_reason(chunks, options):
-            return self._finish(query_id, question, "", chunks, usage, latency, started, reason, ranked, root)
+            return self._finish(
+                query_id, question, "", chunks, usage, latency, started, reason, ranked, root, session_id
+            )
 
         start = time.perf_counter()
         messages = self._messages(question, chunks)
@@ -271,7 +281,9 @@ class AskPipeline:
             else:
                 reason = "citation_check_failed"
         latency["generate"] = _ms(start)
-        return self._finish(query_id, question, completion.text, chunks, usage, latency, started, reason, ranked, root)
+        return self._finish(
+            query_id, question, completion.text, chunks, usage, latency, started, reason, ranked, root, session_id
+        )
 
     def ask_stream(
         self,
@@ -279,20 +291,25 @@ class AskPipeline:
         top_k: int | None = None,
         doc_ids: list[str] | None = None,
         options: PipelineOptions | None = None,
+        session_id: str | None = None,
     ) -> Iterator[Event]:
         options = options or PipelineOptions()
         query_id = new_query_id()
         with span("ask_stream", query_id=query_id, mode=options.mode, rerank=options.rerank) as root:
-            yield from self._ask_stream(question, top_k, doc_ids, options, query_id, root)
+            yield from self._ask_stream(question, top_k, doc_ids, options, query_id, root, session_id)
 
-    def _ask_stream(self, question, top_k, doc_ids, options, query_id: str, root: Span) -> Iterator[Event]:
+    def _ask_stream(
+        self, question, top_k, doc_ids, options, query_id: str, root: Span, session_id=None
+    ) -> Iterator[Event]:
         started, latency, usage = time.perf_counter(), {}, Usage()
         yield Event("meta", {"query_id": query_id, "trace_id": trace_id_hex(root)})
 
         ranked = self.retrieve(question, doc_ids, options, latency, root)
         chunks = ranked[: top_k or self.rerank_k]
         if reason := self.abstain_reason(chunks, options):
-            result = self._finish(query_id, question, "", chunks, usage, latency, started, reason, ranked, root)
+            result = self._finish(
+                query_id, question, "", chunks, usage, latency, started, reason, ranked, root, session_id
+            )
             yield Event("done", result.to_dict())
             return
 
@@ -330,6 +347,6 @@ class AskPipeline:
                 reason = "citation_check_failed"
         latency["generate"] = _ms(start)
         result = self._finish(
-            query_id, question, completion.text, chunks, usage, latency, started, reason, ranked, root
+            query_id, question, completion.text, chunks, usage, latency, started, reason, ranked, root, session_id
         )
         yield Event("done", result.to_dict())

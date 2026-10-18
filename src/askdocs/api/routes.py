@@ -26,11 +26,13 @@ from .schemas import (
     IngestJob,
     LLMStatus,
     RuntimeSettings,
+    SessionOut,
     SettingsResponse,
     SettingsUpdate,
 )
 
-ERRORS = {code: {"model": ErrorResponse} for code in (400, 403, 404, 413, 429, 500, 504)}
+ERRORS = {code: {"model": ErrorResponse} for code in (400, 403, 404, 410, 413, 429, 500, 504)}
+SESSION_HEADER = "X-Session-Id"
 
 router = APIRouter(prefix="/api/v1", responses=ERRORS)
 
@@ -43,20 +45,84 @@ def jobs(request: Request) -> JobStore:
     return request.app.state.jobs
 
 
+def session_id(request: Request, required: bool = False, touch: bool = False) -> str | None:
+    """The caller's browser session (X-Session-Id header, or ?session_id= for file links).
+
+    Without one, a request sees only shared documents. `touch` marks user activity,
+    which postpones the session's expiry.
+    """
+    sid = request.headers.get(SESSION_HEADER) or request.query_params.get("session_id")
+    if not sid:
+        if required:
+            message = f"Start a session (POST /api/v1/sessions) and send its id in {SESSION_HEADER}."
+            raise APIError(400, "session_required", message)
+        return None
+    if services(request).sessions.get(sid, touch=touch) is None:
+        raise APIError(410, "session_expired", "This session expired after inactivity and its documents were deleted.")
+    return sid
+
+
+def _visible_document(session, doc_id: str, sid: str | None) -> Document:
+    """The document if this session may see it (shared, or its own upload); 404 otherwise."""
+    doc = session.get(Document, doc_id)
+    if doc is None or doc.session_id not in (None, sid):
+        raise APIError(404, "not_found", f"Unknown doc_id '{doc_id}'.")
+    return doc
+
+
+def _source_type(d: Document) -> str:
+    return "user_upload" if d.session_id else "preloaded"
+
+
+# --- Browser sessions ---------------------------------------------------------
+
+
+def _session_out(info) -> SessionOut:
+    return SessionOut(session_id=info.session_id, expires_at=info.expires_at, ttl_s=info.ttl_s)
+
+
+@router.post("/sessions", response_model=SessionOut, status_code=201, tags=["sessions"])
+def create_session(request: Request) -> SessionOut:
+    """Start a private browser session; send its id as X-Session-Id on later requests."""
+    return _session_out(services(request).sessions.create())
+
+
+@router.get("/sessions/current", response_model=SessionOut, tags=["sessions"])
+def current_session(request: Request) -> SessionOut:
+    """The caller's session and when it expires (410 if it already has)."""
+    sid = session_id(request, required=True)
+    return _session_out(services(request).sessions.get(sid))
+
+
+@router.post("/sessions/current/heartbeat", response_model=SessionOut, tags=["sessions"])
+def heartbeat(request: Request) -> SessionOut:
+    """Record user activity in the browser, postponing expiry."""
+    sid = session_id(request, required=True, touch=True)
+    return _session_out(services(request).sessions.get(sid))
+
+
+@router.delete("/sessions/current", status_code=204, tags=["sessions"])
+def end_session(request: Request) -> None:
+    """End the session now and delete everything it uploaded."""
+    services(request).sessions.purge(session_id(request, required=True))
+
+
 # --- Health -------------------------------------------------------------------
 
 
 @router.get("/health", response_model=HealthResponse, tags=["system"])
 def health(request: Request) -> HealthResponse:
+    """System status; document and chunk counts cover what the caller's session can see."""
     svc = services(request)
     s = svc.settings
     database = svc.db.ping()
     qdrant = svc.vectors.ping()
     documents = chunks = 0
     if database:
+        visible = svc.indexer.visible(session_id(request))
         with svc.db.session() as session:
-            documents = session.scalar(select(func.count()).select_from(Document))
-            chunks = session.scalar(select(func.count()).select_from(Chunk))
+            documents = session.scalar(select(func.count()).select_from(Document).where(visible))
+            chunks = session.scalar(select(func.count()).select_from(Chunk).join(Document).where(visible))
     configured = s.llm_configured()
     return HealthResponse(
         status="ok" if database and qdrant and configured else "degraded",
@@ -94,30 +160,29 @@ def ingest(
     files: Annotated[list[UploadFile] | None, File(description="Files to index")] = None,
     path: Annotated[str | None, Form(description="Folder or file under INGEST_ROOT to index")] = None,
 ) -> IngestJob:
-    s = services(request).settings
+    """Index files into the caller's session; they are private to it and deleted when it expires."""
+    sid = session_id(request, required=True, touch=True)
+    svc = services(request)
+    s = svc.settings
     batch: list[tuple[str, bytes, str]] = []
-    upload_dir = s.ingest_root / "uploads"
+    upload_dir = svc.sessions.upload_dir(sid)
     upload_dir.mkdir(parents=True, exist_ok=True)
     for upload in files or []:
-        name = upload.filename or "upload"
+        name = Path(upload.filename or "upload").name or "upload"  # no directory parts from the client
         data = _read_upload(upload, s.max_upload_mb * 2**20)
         file_path = upload_dir / name
-        try:
-            file_path.write_bytes(data)
-            uri = f"upload://{file_path}"
-        except Exception:
-            uri = f"upload://{name}"
-        batch.append((name, data, uri))
+        file_path.write_bytes(data)
+        batch.append((name, data, f"upload://{file_path}"))
     if path:
         batch += _files_under(path, s.ingest_root)
     if not batch:
         raise APIError(400, "invalid_request", "Provide files or a path with supported documents.")
-    return jobs(request).submit(batch)
+    return jobs(request).submit(batch, sid)
 
 
 @router.get("/ingest/{job_id}", response_model=IngestJob, tags=["ingest"])
 def ingest_status(job_id: str, request: Request) -> IngestJob:
-    job = jobs(request).get(job_id)
+    job = jobs(request).get(job_id, session_id(request))
     if job is None:
         raise APIError(404, "not_found", f"Unknown job_id '{job_id}'.")
     return job
@@ -137,6 +202,8 @@ def _resolve_doc_file_path(d: Document, s: Settings) -> Path | None:
         p = Path(raw_target)
         if p.is_file():
             return p
+        if d.session_id:  # never fall back to a same-named file from another session
+            return None
         p2 = s.ingest_root / "uploads" / d.file_name
         if p2.is_file():
             return p2
@@ -155,7 +222,7 @@ def _resolve_doc_file_path(d: Document, s: Settings) -> Path | None:
 
 @router.get("/documents", response_model=DocumentList, tags=["documents"])
 def documents(request: Request) -> DocumentList:
-    docs = services(request).indexer.list_documents()
+    docs = services(request).indexer.list_documents(session_id(request))
     return DocumentList(
         documents=[
             DocumentOut(
@@ -164,7 +231,7 @@ def documents(request: Request) -> DocumentList:
                 title=d.title,
                 chunks=len(d.chunks),
                 ingested_at=d.ingested_at,
-                source_type="user_upload" if (d.source_uri or "").startswith("upload://") else "preloaded",
+                source_type=_source_type(d),
             )
             for d in docs
         ]
@@ -174,10 +241,9 @@ def documents(request: Request) -> DocumentList:
 @router.get("/documents/{doc_id}", response_model=DocumentDetail, tags=["documents"])
 def get_document(doc_id: str, request: Request) -> DocumentDetail:
     s_settings = services(request).settings
+    sid = session_id(request)
     with services(request).db.session() as s:
-        d = s.get(Document, doc_id)
-        if d is None:
-            raise APIError(404, "not_found", f"Unknown doc_id '{doc_id}'.")
+        d = _visible_document(s, doc_id, sid)
         chunks = [
             ChunkOut(
                 chunk_id=c.chunk_id,
@@ -205,12 +271,15 @@ def get_document(doc_id: str, request: Request) -> DocumentDetail:
             file_name=d.file_name,
             title=d.title,
             source_uri=d.source_uri or "",
-            source_type="user_upload" if (d.source_uri or "").startswith("upload://") else "preloaded",
+            source_type=_source_type(d),
             chunks=chunks,
             chunk_count=len(chunks),
             full_text=full_text,
             has_file=has_file,
-            file_url=f"/api/v1/documents/{d.doc_id}/file" if has_file else None,
+            # <iframe>/<a> can't send headers, so session uploads carry the session in the link
+            file_url=(f"/api/v1/documents/{d.doc_id}/file" + (f"?session_id={sid}" if d.session_id else ""))
+            if has_file
+            else None,
             ingested_at=d.ingested_at,
         )
 
@@ -219,9 +288,7 @@ def get_document(doc_id: str, request: Request) -> DocumentDetail:
 def get_document_file(doc_id: str, request: Request) -> FileResponse:
     s_settings = services(request).settings
     with services(request).db.session() as s:
-        d = s.get(Document, doc_id)
-        if d is None:
-            raise APIError(404, "not_found", f"Unknown doc_id '{doc_id}'.")
+        d = _visible_document(s, doc_id, session_id(request))
         file_path = _resolve_doc_file_path(d, s_settings)
         if file_path is None or not file_path.is_file():
             raise APIError(404, "not_found", f"Source file for '{doc_id}' not found.")
@@ -236,28 +303,35 @@ def get_document_file(doc_id: str, request: Request) -> FileResponse:
 
 @router.delete("/documents/{doc_id}", status_code=204, tags=["documents"])
 def delete_document(doc_id: str, request: Request) -> None:
-    if not services(request).indexer.delete(doc_id):
-        raise APIError(404, "not_found", f"Unknown doc_id '{doc_id}'.")
+    """Delete one of the session's own uploads; shared documents can't be deleted through the API."""
+    sid = session_id(request, touch=True)
+    with services(request).db.session() as s:
+        doc = _visible_document(s, doc_id, sid)
+    if doc.session_id is None:
+        raise APIError(403, "forbidden", "Shared documents can't be deleted here.")
+    services(request).indexer.delete(doc_id)
 
 
 # --- Ask ----------------------------------------------------------------------
 
 
-def _doc_filter(request: Request, body: AskRequest) -> list[str] | None:
+def _doc_filter(request: Request, body: AskRequest, sid: str | None) -> list[str]:
+    """Documents to search: everything the session can see, narrowed by the request's filter."""
+    visible = services(request).indexer.visible_doc_ids(sid)
     doc_ids = body.filters.doc_ids if body.filters else None
     if not doc_ids:
-        return None
-    with services(request).db.session() as session:
-        known = set(session.scalars(select(Document.doc_id).where(Document.doc_id.in_(doc_ids))))
-    if unknown := sorted(set(doc_ids) - known):
+        return visible
+    if unknown := sorted(set(doc_ids) - set(visible)):
         raise APIError(400, "invalid_request", f"Unknown doc_ids in filters: {', '.join(unknown)}")
     return doc_ids
 
 
 @router.post("/ask", response_model=AskResponse, tags=["ask"])
 def ask(body: AskRequest, request: Request) -> dict:
-    doc_ids = _doc_filter(request, body)
-    return services(request).pipeline.ask(body.question, top_k=body.top_k, doc_ids=doc_ids).to_dict()
+    sid = session_id(request, touch=True)
+    doc_ids = _doc_filter(request, body, sid)
+    result = services(request).pipeline.ask(body.question, top_k=body.top_k, doc_ids=doc_ids, session_id=sid)
+    return result.to_dict()
 
 
 def _sse(event: str, data: dict) -> str:
@@ -271,12 +345,13 @@ def _sse(event: str, data: dict) -> str:
     responses={200: {"content": {"text/event-stream": {}}, "description": "meta, token, retry, done or error events"}},
 )
 def ask_stream(body: AskRequest, request: Request) -> StreamingResponse:
-    doc_ids = _doc_filter(request, body)  # validation errors are returned as normal JSON errors
+    sid = session_id(request, touch=True)
+    doc_ids = _doc_filter(request, body, sid)  # validation errors are returned as normal JSON errors
     pipeline = services(request).pipeline
 
     def events():
         try:
-            for event in pipeline.ask_stream(body.question, top_k=body.top_k, doc_ids=doc_ids):
+            for event in pipeline.ask_stream(body.question, top_k=body.top_k, doc_ids=doc_ids, session_id=sid):
                 yield _sse(event.type, event.data)
         except Exception as exc:  # the response has started, so report errors as an event
             status, code, message = classify(exc)
@@ -348,9 +423,10 @@ def reset_settings(request: Request) -> SettingsResponse:
 @router.post("/feedback", response_model=FeedbackResponse, status_code=201, tags=["feedback"])
 def feedback(body: FeedbackRequest, request: Request) -> FeedbackResponse:
     """Rate an answer; rating the same query again replaces the earlier rating."""
+    sid = session_id(request, touch=True)
     with services(request).db.session() as session:
         trace = session.get(Trace, body.query_id)
-        if trace is None:
+        if trace is None or trace.session_id != sid:
             raise APIError(404, "not_found", f"Unknown query_id '{body.query_id}'.")
         row = session.get(Feedback, body.query_id) or Feedback(query_id=body.query_id)
         row.question, row.answer = trace.question, trace.answer
