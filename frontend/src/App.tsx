@@ -1,5 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
-import { useCallback, useEffect, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type Citation } from "./api/client";
 import AnswerView from "./components/AnswerView";
 import AskBox from "./components/AskBox";
@@ -12,6 +12,13 @@ import UploadPanel from "./components/UploadPanel";
 import { useAskStream } from "./hooks/useAskStream";
 import { useChatSession } from "./hooks/useChatSession";
 
+function getGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Good morning";
+  if (hour < 18) return "Good afternoon";
+  return "Good evening";
+}
+
 const STARTER_PROMPTS = [
   { label: "Parental leave policy", prompt: "How long is parental leave for primary caregivers?" },
   { label: "Working remotely", prompt: "Can employees work remotely and what are the core hours?" },
@@ -20,7 +27,9 @@ const STARTER_PROMPTS = [
 ];
 
 export default function App() {
+  const queryClient = useQueryClient();
   const health = useQuery({ queryKey: ["health"], queryFn: api.health, refetchInterval: 30_000 });
+  const documentsQuery = useQuery({ queryKey: ["documents"], queryFn: api.documents });
   const ask = useAskStream();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -29,6 +38,50 @@ export default function App() {
   const [rightPanelTab, setRightPanelTab] = useState<"doc" | "citations">("citations");
   const [previewDocId, setPreviewDocId] = useState<string | null>(null);
   const [activeCitation, setActiveCitation] = useState<number | null>(null);
+
+  const [heroDragging, setHeroDragging] = useState(false);
+  const heroFileInput = useRef<HTMLInputElement>(null);
+  const [heroJobId, setHeroJobId] = useState<string | null>(null);
+  const [justUploadedDocName, setJustUploadedDocName] = useState<string | null>(() => {
+    try {
+      return sessionStorage.getItem("askdocs_last_uploaded_doc") || null;
+    } catch {
+      return null;
+    }
+  });
+
+  const heroJob = useQuery({
+    queryKey: ["heroIngest", heroJobId],
+    queryFn: () => api.ingestJob(heroJobId!),
+    enabled: heroJobId !== null,
+    refetchInterval: (q) => (q.state.data && ["completed", "failed"].includes(q.state.data.status) ? false : 1000),
+  });
+
+  const heroUpload = useMutation({
+    mutationFn: api.ingest,
+    onSuccess: (started) => setHeroJobId(started.job_id),
+  });
+
+  useEffect(() => {
+    if (heroJob.data?.status === "completed") {
+      void queryClient.invalidateQueries({ queryKey: ["documents"] });
+      void queryClient.invalidateQueries({ queryKey: ["health"] });
+      const uploadedFile = heroJob.data.results[0]?.file_name || "your document";
+      setJustUploadedDocName(uploadedFile);
+      try {
+        sessionStorage.setItem("askdocs_last_uploaded_doc", uploadedFile);
+      } catch {}
+      const newDocId = heroJob.data.results[0]?.doc_id;
+      if (newDocId) {
+        setPreviewDocId(newDocId);
+        setRightPanelTab("doc");
+        setRightPanelOpen(true);
+      }
+    }
+  }, [heroJob.data?.status, heroJob.data?.results, queryClient]);
+
+  const allDocs = documentsQuery.data ?? [];
+  const userUploads = allDocs.filter((d) => d.source_type === "user_upload");
 
   const streaming = ask.status === "streaming";
   const {
@@ -320,39 +373,174 @@ export default function App() {
             {/* Scrollable Conversation Content */}
             <div className="flex-1 overflow-y-auto">
               <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col p-4 sm:p-6 pb-36">
-              {/* Empty state: Clean Starter Prompts */}
+              {/* Empty state */}
               {activeSession?.turns.length === 0 && !streaming && (
-                <div className="my-auto flex flex-col items-center justify-center py-12 text-center">
-                  <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600 shadow-xs dark:bg-indigo-950/60 dark:text-indigo-400">
-                    <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth="2"
-                        d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-                      />
-                    </svg>
-                  </div>
-                  <h2 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
-                    Ask My Docs
-                  </h2>
-                  <p className="mt-2 max-w-md text-sm text-slate-500 dark:text-slate-400">
-                    Instant verified answers grounded directly in your organizational policies and uploaded documents.
-                  </p>
+                <div className="my-auto flex flex-col items-center justify-center py-8 text-center">
+                  {!justUploadedDocName && userUploads.length === 0 ? (
+                    /* First-Time User View */
+                    <>
+                      <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600 shadow-xs dark:bg-indigo-950/60 dark:text-indigo-400">
+                        <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth="2"
+                            d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25"
+                          />
+                        </svg>
+                      </div>
 
-                  <div className="mt-8 grid w-full max-w-xl grid-cols-1 gap-2.5 sm:grid-cols-2">
-                    {STARTER_PROMPTS.map((starter) => (
-                      <button
-                        key={starter.label}
-                        type="button"
-                        onClick={() => handleAsk(starter.prompt)}
-                        className="rounded-xl border border-slate-200 bg-white p-3.5 text-left text-xs transition hover:border-indigo-400 hover:shadow-xs dark:border-slate-800 dark:bg-slate-900 dark:hover:border-indigo-500"
-                      >
-                        <p className="font-semibold text-slate-800 dark:text-slate-200">{starter.label}</p>
-                        <p className="mt-1 line-clamp-2 text-slate-500 dark:text-slate-400">{starter.prompt}</p>
-                      </button>
-                    ))}
-                  </div>
+                      <h2 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
+                        {getGreeting()}
+                      </h2>
+
+                      <p className="mt-1.5 text-base font-medium text-slate-600 dark:text-slate-300">
+                        Ask any question about your document
+                      </p>
+
+                      {/* Prominent Upload Field for First Time User */}
+                      <div className="mt-6 w-full max-w-lg">
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          aria-label="Upload document"
+                          onClick={() => heroFileInput.current?.click()}
+                          onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && heroFileInput.current?.click()}
+                          onDragOver={(e) => {
+                            e.preventDefault();
+                            setHeroDragging(true);
+                          }}
+                          onDragLeave={() => setHeroDragging(false)}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            setHeroDragging(false);
+                            if (e.dataTransfer.files?.length) {
+                              heroUpload.mutate(Array.from(e.dataTransfer.files));
+                            }
+                          }}
+                          className={`group relative cursor-pointer rounded-2xl border-2 border-dashed p-8 text-center transition-all ${
+                            heroDragging
+                              ? "border-indigo-500 bg-indigo-50/70 dark:border-indigo-400 dark:bg-indigo-950/30"
+                              : "border-slate-300 bg-white hover:border-indigo-500 hover:bg-slate-50/60 dark:border-slate-700 dark:bg-slate-900 dark:hover:border-indigo-400"
+                          }`}
+                        >
+                          <input
+                            ref={heroFileInput}
+                            type="file"
+                            multiple
+                            accept=".pdf,.md,.markdown,.html,.htm,.txt"
+                            hidden
+                            onChange={(e) => {
+                              if (e.target.files?.length) {
+                                heroUpload.mutate(Array.from(e.target.files));
+                                e.target.value = "";
+                              }
+                            }}
+                          />
+
+                          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-indigo-50 text-indigo-600 group-hover:scale-110 transition-transform dark:bg-indigo-950/60 dark:text-indigo-400">
+                            {heroUpload.isPending || (heroJob.data && heroJob.data.status !== "completed" && heroJob.data.status !== "failed") ? (
+                              <span className="h-5 w-5 animate-spin rounded-full border-2 border-indigo-600 border-t-transparent" />
+                            ) : (
+                              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                              </svg>
+                            )}
+                          </div>
+
+                          <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+                            {heroUpload.isPending || (heroJob.data && heroJob.data.status !== "completed" && heroJob.data.status !== "failed")
+                              ? "Indexing and processing your document…"
+                              : "Upload a document to get started"}
+                          </p>
+                          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                            Drag & drop or click to browse · PDF, Markdown, HTML or TXT
+                          </p>
+
+                          {heroUpload.isError && (
+                            <p className="mt-2 text-xs text-red-600">{heroUpload.error.message}</p>
+                          )}
+                          {heroJob.data?.status === "failed" && (
+                            <p className="mt-2 text-xs text-red-600">Failed: {heroJob.data.error}</p>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Or ask about pre-loaded policies */}
+                      <div className="mt-8 w-full max-w-xl">
+                        <div className="relative mb-4 flex items-center justify-center">
+                          <div className="absolute inset-0 flex items-center">
+                            <div className="w-full border-t border-slate-200 dark:border-slate-800" />
+                          </div>
+                          <span className="relative bg-slate-50 px-3 text-[11px] font-medium uppercase tracking-wider text-slate-400 dark:bg-slate-950">
+                            Or ask about pre-loaded policies
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                          {STARTER_PROMPTS.map((starter) => (
+                            <button
+                              key={starter.label}
+                              type="button"
+                              onClick={() => handleAsk(starter.prompt)}
+                              className="rounded-xl border border-slate-200 bg-white p-3 text-left text-xs transition hover:border-indigo-400 hover:shadow-xs dark:border-slate-800 dark:bg-slate-900 dark:hover:border-indigo-500"
+                            >
+                              <p className="font-semibold text-slate-800 dark:text-slate-200">{starter.label}</p>
+                              <p className="mt-0.5 line-clamp-1 text-slate-500 dark:text-slate-400">{starter.prompt}</p>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    /* Post-Upload View: "You can ask anything from the document" */
+                    <>
+                      <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600 shadow-xs dark:bg-emerald-950/60 dark:text-emerald-400">
+                        <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                        </svg>
+                      </div>
+
+                      <h2 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
+                        You can ask anything from the document
+                      </h2>
+
+                      <p className="mt-1.5 max-w-md text-sm text-slate-500 dark:text-slate-400">
+                        Your document is verified and indexed. Ask any question below or pick a quick suggestion to explore.
+                      </p>
+
+                      {/* Uploaded document badge */}
+                      <div className="mt-4 flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs text-slate-700 shadow-2xs dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200">
+                        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 text-[11px] font-bold dark:bg-emerald-950 dark:text-emerald-400">
+                          ✓
+                        </span>
+                        <span className="font-medium truncate max-w-xs font-mono text-[11px]">
+                          {justUploadedDocName || userUploads[0]?.title || userUploads[0]?.file_name}
+                        </span>
+                        <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold">Ready</span>
+                      </div>
+
+                      {/* Quick starter questions tailored to the document */}
+                      <div className="mt-6 grid w-full max-w-xl grid-cols-1 gap-2.5 sm:grid-cols-2">
+                        {[
+                          { label: "Document summary", prompt: "Can you provide a summary of the main points in this document?" },
+                          { label: "Key findings & requirements", prompt: "What are the most important requirements or takeaways?" },
+                          { label: "Important dates & deadlines", prompt: "Are there any specific dates, deadlines or timeframes mentioned?" },
+                          { label: "Specific guidelines", prompt: "What are the specific guidelines or procedures outlined?" },
+                        ].map((starter) => (
+                          <button
+                            key={starter.label}
+                            type="button"
+                            onClick={() => handleAsk(starter.prompt)}
+                            className="rounded-xl border border-slate-200 bg-white p-3 text-left text-xs transition hover:border-indigo-500 hover:shadow-xs dark:border-slate-800 dark:bg-slate-900 dark:hover:border-indigo-400"
+                          >
+                            <p className="font-semibold text-slate-800 dark:text-slate-200">{starter.label}</p>
+                            <p className="mt-0.5 line-clamp-1 text-slate-500 dark:text-slate-400">{starter.prompt}</p>
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
 
