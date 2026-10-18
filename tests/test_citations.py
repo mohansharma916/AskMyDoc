@@ -50,3 +50,16 @@ def test_not_found_detection():
     assert is_not_found("NOT_FOUND")
     assert is_not_found("  **NOT_FOUND**")
     assert not is_not_found("The answer was not found in section 2 [1].")
+
+
+def test_gap_sentence_needs_no_citation():
+    answer = "The accused is Shiva [1]. The documents do not say the accused's age."
+    assert check_citations(answer, 3).ok
+    assert answer_sentences(answer) == ["The accused is Shiva [1]."]
+    assert not is_not_found(answer)
+
+
+def test_answer_of_only_gaps_is_not_found():
+    assert is_not_found("The documents do not say the accused's age.")
+    assert is_not_found("**The documents do not say** who filed it. The documents do not say when.")
+    assert not check_citations("The documents do not say the accused's age.", 3).ok

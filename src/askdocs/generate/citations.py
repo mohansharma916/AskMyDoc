@@ -2,12 +2,14 @@
 
 An answer passes when every factual sentence carries at least one [n] marker
 and every marker points at one of the excerpts that were shown to the model.
+Sentences starting with NOT_COVERED name what the excerpts don't say, so they
+need no citation; an answer made only of them counts as not found.
 """
 
 import re
 from dataclasses import dataclass, field
 
-from .prompt import NOT_FOUND
+from .prompt import NOT_COVERED, NOT_FOUND
 
 _CITATION = re.compile(r"\[(\d+)\]")
 # Split after sentence punctuation (optionally followed by citations), before the next sentence.
@@ -19,8 +21,13 @@ def cited_numbers(text: str) -> list[int]:
     return [int(n) for n in _CITATION.findall(text)]
 
 
+def is_gap(sentence: str) -> bool:
+    return sentence.strip().strip("*`").lower().startswith(NOT_COVERED.lower())
+
+
 def is_not_found(answer: str) -> bool:
-    return answer.strip().strip("*`").upper().startswith(NOT_FOUND)
+    text = answer.strip().strip("*`")
+    return text.upper().startswith(NOT_FOUND) or (is_gap(text) and not cited_numbers(text))
 
 
 def answer_sentences(answer: str) -> list[str]:
@@ -33,7 +40,7 @@ def answer_sentences(answer: str) -> list[str]:
         for sentence in _SENTENCE_BREAK.split(line):
             sentence = sentence.strip()
             words = _CITATION.sub("", sentence).split()
-            if len(words) >= 3:
+            if len(words) >= 3 and not is_gap(sentence):
                 sentences.append(sentence)
     return sentences
 
