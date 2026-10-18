@@ -15,7 +15,12 @@ function jobSummary(job: IngestJob): string {
   return `${parts.join(", ") || "Nothing to index"} · ${c.chunks} chunks`;
 }
 
-export default function UploadPanel() {
+interface Props {
+  onSelectDocument?: (docId: string) => void;
+  activeDocId?: string | null;
+}
+
+export default function UploadPanel({ onSelectDocument, activeDocId }: Props) {
   const queryClient = useQueryClient();
   const input = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
@@ -37,7 +42,10 @@ export default function UploadPanel() {
 
   const remove = useMutation({
     mutationFn: api.deleteDocument,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["documents"] }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["documents"] });
+      void queryClient.invalidateQueries({ queryKey: ["health"] });
+    },
   });
 
   const jobStatus = job.data?.status;
@@ -55,8 +63,13 @@ export default function UploadPanel() {
   const busy = upload.isPending || (job.data !== undefined && !jobDone);
   const failedFiles = job.data?.results.filter((r) => r.status === "failed") ?? [];
 
+  const allDocs = documents.data ?? [];
+  const preloadedDocs = allDocs.filter((d) => d.source_type !== "user_upload");
+  const userUploads = allDocs.filter((d) => d.source_type === "user_upload");
+
   return (
     <section aria-label="Documents" className="flex flex-col gap-4">
+      {/* Upload Dropzone */}
       <div
         role="button"
         tabIndex={0}
@@ -73,14 +86,19 @@ export default function UploadPanel() {
           setDragging(false);
           send(e.dataTransfer.files);
         }}
-        className={`cursor-pointer rounded-lg border-2 border-dashed px-4 py-6 text-center text-sm transition ${
+        className={`group relative cursor-pointer rounded-xl border border-dashed p-4 text-center transition-all ${
           dragging
-            ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-950/40"
-            : "border-slate-300 hover:border-indigo-400 dark:border-slate-700"
+            ? "border-amber-600 bg-amber-50/50 dark:border-amber-500 dark:bg-amber-950/20"
+            : "border-stone-300 bg-stone-50/60 hover:border-amber-600 hover:bg-stone-50 dark:border-stone-700 dark:bg-stone-850 dark:hover:border-amber-500"
         }`}
       >
-        <p className="font-medium">{busy ? "Indexing…" : "Drop files or click to upload"}</p>
-        <p className="mt-1 text-xs text-slate-500">PDF, Markdown, HTML or TXT</p>
+        <div className="mx-auto mb-2 flex h-8 w-8 items-center justify-center rounded-full bg-white shadow-xs group-hover:scale-105 transition-transform dark:bg-stone-800">
+          <svg className="h-4 w-4 text-stone-600 dark:text-stone-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+          </svg>
+        </div>
+        <p className="text-xs font-medium text-stone-800 dark:text-stone-200">{busy ? "Indexing…" : "Drop files or click to upload"}</p>
+        <p className="mt-0.5 text-[11px] text-stone-500 dark:text-stone-400">PDF, Markdown, HTML or TXT</p>
         <input
           ref={input}
           type="file"
@@ -106,35 +124,114 @@ export default function UploadPanel() {
         ))}
       </div>
 
+      {/* Main Document Listing */}
       <div>
-        <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-          Indexed documents ({documents.data?.length ?? 0})
-        </h2>
+        <div className="mb-2 flex items-center justify-between">
+          <h2 className="text-[11px] font-semibold uppercase tracking-wider text-stone-500 dark:text-stone-400">
+            Indexed documents ({allDocs.length})
+          </h2>
+        </div>
+
         {documents.isError && <p className="text-xs text-red-600">Could not load documents.</p>}
-        {documents.data?.length === 0 && <p className="text-xs text-slate-500">No documents yet.</p>}
-        <ul className="flex flex-col gap-1">
-          {documents.data?.map((d) => (
-            <li
-              key={d.doc_id}
-              className="group flex items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-slate-100 dark:hover:bg-slate-800"
-            >
-              <span className="min-w-0 flex-1 truncate" title={d.file_name}>
-                {d.title}
-                <span className="block truncate text-xs text-slate-500">
-                  {d.file_name} · {d.chunks} chunks
-                </span>
-              </span>
-              <button
-                type="button"
-                aria-label={`Remove ${d.file_name}`}
-                onClick={() => remove.mutate(d.doc_id)}
-                className="rounded px-1.5 text-slate-400 opacity-0 hover:bg-red-50 hover:text-red-600 focus:opacity-100 group-hover:opacity-100"
-              >
-                ×
-              </button>
-            </li>
-          ))}
-        </ul>
+        {allDocs.length === 0 && <p className="text-xs text-stone-500">No documents yet.</p>}
+
+        {/* User Uploaded Section */}
+        {userUploads.length > 0 && (
+          <div className="mb-3">
+            <div className="mb-1.5 flex items-center gap-1.5 px-1 text-[11px] font-medium text-emerald-700 dark:text-emerald-400">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+              User Uploads ({userUploads.length})
+            </div>
+            <ul className="flex flex-col gap-1">
+              {userUploads.map((d) => (
+                <li
+                  key={d.doc_id}
+                  className={`group flex items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-sm transition cursor-pointer ${
+                    activeDocId === d.doc_id
+                      ? "bg-amber-50 text-stone-900 border border-amber-200 dark:bg-stone-800 dark:text-stone-100 dark:border-stone-700"
+                      : "hover:bg-stone-100 dark:hover:bg-stone-800/60"
+                  }`}
+                  onClick={() => onSelectDocument?.(d.doc_id)}
+                >
+                  <span className="min-w-0 flex-1 truncate" title={d.file_name}>
+                    <span className="font-medium text-stone-800 dark:text-stone-200">{d.title}</span>
+                    <span className="block truncate text-xs text-stone-500">
+                      {d.file_name} · {d.chunks} chunks
+                    </span>
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400">
+                      Upload
+                    </span>
+                    <button
+                      type="button"
+                      aria-label={`Remove ${d.file_name}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        remove.mutate(d.doc_id);
+                      }}
+                      className="rounded p-1 text-stone-400 opacity-0 hover:bg-red-50 hover:text-red-600 focus:opacity-100 group-hover:opacity-100 transition"
+                    >
+                      <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+                        <path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" />
+                      </svg>
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* Pre-loaded Corpus Section */}
+        {preloadedDocs.length > 0 && (
+          <div>
+            {userUploads.length > 0 && (
+              <div className="mb-1.5 flex items-center gap-1.5 px-1 text-[11px] font-medium text-stone-500 dark:text-stone-400">
+                <span className="h-1.5 w-1.5 rounded-full bg-stone-400"></span>
+                Pre-loaded Corpus ({preloadedDocs.length})
+              </div>
+            )}
+            <ul className="flex flex-col gap-1">
+              {preloadedDocs.map((d) => (
+                <li
+                  key={d.doc_id}
+                  className={`group flex items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-sm transition cursor-pointer ${
+                    activeDocId === d.doc_id
+                      ? "bg-amber-50 text-stone-900 border border-amber-200 dark:bg-stone-800 dark:text-stone-100 dark:border-stone-700"
+                      : "hover:bg-stone-100 dark:hover:bg-stone-800/60"
+                  }`}
+                  onClick={() => onSelectDocument?.(d.doc_id)}
+                >
+                  <span className="min-w-0 flex-1 truncate" title={d.file_name}>
+                    <span className="font-medium text-stone-800 dark:text-stone-200">{d.title}</span>
+                    <span className="block truncate text-xs text-stone-500">
+                      {d.file_name} · {d.chunks} chunks
+                    </span>
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <span className="rounded bg-stone-100 px-1.5 py-0.5 text-[10px] font-medium text-stone-600 dark:bg-stone-800 dark:text-stone-300">
+                      Corpus
+                    </span>
+                    <button
+                      type="button"
+                      aria-label={`Remove ${d.file_name}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        remove.mutate(d.doc_id);
+                      }}
+                      className="rounded p-1 text-stone-400 opacity-0 hover:bg-red-50 hover:text-red-600 focus:opacity-100 group-hover:opacity-100 transition"
+                    >
+                      <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+                        <path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" />
+                      </svg>
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
     </section>
   );

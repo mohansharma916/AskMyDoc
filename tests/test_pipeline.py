@@ -17,7 +17,7 @@ def test_cited_answer_with_usage_latency_and_trace(make_services):
     assert "20 weeks" in cite.snippet
     assert result.usage.input_tokens == 100 and result.model == "fake-llm"
     assert {"retrieve", "rerank", "generate", "total"} <= result.latency_ms.keys()
-    assert result.prompt_version == "answer_v1"
+    assert result.prompt_version == "answer_v2"
 
     with services.db.session() as s:
         trace = s.scalars(select(Trace)).one()
@@ -50,6 +50,19 @@ def test_no_results_abstains(make_services):
 
 def test_model_not_found_reply_abstains(make_services):
     result = make_services(llm=FakeLLM("NOT_FOUND")).pipeline.ask("parental leave weeks")
+    assert result.abstained and result.abstain_reason == "not_in_documents"
+
+
+def test_partial_answer_keeps_supported_part(make_services):
+    reply = "Primary caregivers receive 20 weeks of parental leave [1]. The documents do not say how leave is paid."
+    llm = FakeLLM(reply)
+    result = make_services(llm=llm).pipeline.ask("How many weeks of parental leave, and how is it paid?")
+    assert not result.abstained and result.answer == reply
+    assert [c.n for c in result.citations] == [1] and len(llm.calls) == 1  # no retry
+
+
+def test_reply_of_only_gaps_abstains(make_services):
+    result = make_services(llm=FakeLLM("The documents do not say how leave is paid.")).pipeline.ask("leave pay")
     assert result.abstained and result.abstain_reason == "not_in_documents"
 
 

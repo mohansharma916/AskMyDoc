@@ -50,10 +50,31 @@ class DocumentOut(BaseModel):
     title: str
     chunks: int
     ingested_at: datetime
+    source_type: Literal["preloaded", "user_upload"] = "preloaded"
 
 
 class DocumentList(BaseModel):
     documents: list[DocumentOut]
+
+
+class ChunkOut(BaseModel):
+    chunk_id: str
+    page: int | None = None
+    section_path: list[str] = Field(default_factory=list)
+    text: str
+    token_count: int
+    position: int
+
+
+class DocumentDetail(BaseModel):
+    doc_id: str
+    file_name: str
+    title: str
+    source_uri: str
+    source_type: Literal["preloaded", "user_upload"] = "preloaded"
+    chunks: list[ChunkOut] = Field(default_factory=list)
+    chunk_count: int = 0
+    ingested_at: datetime
 
 
 # --- Ask ----------------------------------------------------------------------

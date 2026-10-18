@@ -17,6 +17,13 @@ def test_load_shipped_prompt():
     assert NOT_FOUND in prompt.system and "[1]" in prompt.system
 
 
+def test_v2_prompt_allows_partial_answers_with_the_exact_gap_phrase():
+    from askdocs.generate.prompt import NOT_COVERED
+
+    prompt = load_prompt(PROJECT_ROOT / "prompts", "answer_v2")
+    assert f'"{NOT_COVERED}"' in prompt.system and NOT_FOUND in prompt.system
+
+
 def test_missing_prompt(tmp_path):
     with pytest.raises(FileNotFoundError):
         load_prompt(tmp_path, "nope")

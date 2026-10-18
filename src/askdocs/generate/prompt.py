@@ -5,6 +5,8 @@ from pathlib import Path
 from ..retrieve.types import Candidate
 
 NOT_FOUND = "NOT_FOUND"
+# Opens a sentence naming a part of the question the excerpts don't cover; it needs no citation.
+NOT_COVERED = "The documents do not say"
 
 
 @dataclass(frozen=True)
@@ -40,5 +42,6 @@ def build_retry_message(issues: list[str], n_chunks: int) -> str:
     return (
         f"Your previous answer broke the citation rules:\n{listed}\n\n"
         f"Rewrite it so every sentence ends with citations to excerpts [1] to [{n_chunks}], "
-        f"or reply with exactly {NOT_FOUND} if the excerpts do not support an answer."
+        f'except sentences starting "{NOT_COVERED}" for parts the excerpts do not cover. '
+        f"Reply with exactly {NOT_FOUND} if the excerpts support no part of the question."
     )
