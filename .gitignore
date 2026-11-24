@@ -35,3 +35,6 @@ TESTING.md
 frontend/.env
 .DS_Store
 frontend/*.tsbuildinfo
+
+# project-track: local activity log
+.project-track/activity.jsonl
